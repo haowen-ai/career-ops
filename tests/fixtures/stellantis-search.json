@@ -1,0 +1,69 @@
+{
+  "totalHits": 3,
+  "nextPageToken": null,
+  "spellingCorrection": null,
+  "searchResults": [
+    {
+      "summary": {
+        "job_summary": "The Calibration Specialist is responsible for providing technical guidance, deve"
+      },
+      "job": {
+        "id": 24114862,
+        "ref": "2022837",
+        "title": "Base Engine Calibration Specialist",
+        "primary_category": "Engineering",
+        "primary_city": "Auburn Hills",
+        "primary_state": "MI",
+        "primary_country": "US",
+        "open_date": "2026-11-05T16:02:21",
+        "url": "https://careers.stellantis.com/job/24114862/base-engine-calibration-specialist-auburn-hills-mi/",
+        "seo_url": "https://recruiting.adp.com/srccar/public/RTI.home?r=5001236439606&c=2183219&d=ExternalCareerSite&rb=SYMPHONYTALENT",
+        "employment_type": "Full-time",
+        "brand": "FCA Group"
+      }
+    },
+    {
+      "summary": {
+        "job_summary": "The co-op program offers a unique alternative to traditional internships by prov"
+      },
+      "job": {
+        "id": 23144513,
+        "ref": "2016085",
+        "title": "2026 Quality Engineering Kettering Co-Op",
+        "primary_category": "Engineering",
+        "primary_city": "Detroit",
+        "primary_state": "MI",
+        "primary_country": "US",
+        "open_date": "2026-08-03T16:02:23",
+        "url": "https://careers.stellantis.com/job/23144513/2026-quality-engineering-kettering-co-op-detroit-mi/",
+        "seo_url": "https://recruiting.adp.com/srccar/public/RTI.home?r=5001184895400&c=2183219&d=ExternalCareerSite&rb=SYMPHONYTALENT",
+        "employment_type": "Co-op",
+        "brand": "FCA Group"
+      }
+    },
+    {
+      "summary": {
+        "job_summary": "Interns will be assigned to a department based on the candidate’s backgroundands"
+      },
+      "job": {
+        "id": 23787234,
+        "ref": "2021363",
+        "title": "2027 Product Design Office (PDO) – CAD Design Engineer Internship",
+        "primary_category": "Design",
+        "primary_city": "Auburn Hills",
+        "primary_state": "MI",
+        "primary_country": "US",
+        "open_date": "2026-09-01T12:02:24",
+        "url": "https://careers.stellantis.com/job/23787234/2027-product-design-office-pdo-cad-design-engineer-internship-auburn-hills-mi/",
+        "seo_url": "https://recruiting.adp.com/srccar/public/RTI.home?r=5001221755006&c=2183219&d=ExternalCareerSite&rb=SYMPHONYTALENT",
+        "employment_type": "Internship",
+        "brand": "FCA Group"
+      }
+    }
+  ],
+  "histogramResults": null,
+  "metadata": {
+    "requestId": "fixture"
+  },
+  "timestamp": "1794111848"
+}

@@ -1,0 +1,65 @@
+{
+ "jobRequisitions": [
+  {
+   "itemID": "9202037049483_1",
+   "clientRequisitionID": "1115",
+   "postDate": "2026-09-24T19:43:00",
+   "requisitionLocations": [
+    {
+     "address": {
+      "cityName": "Elkhart",
+      "countrySubdivisionLevel1": {
+       "codeValue": "IN"
+      },
+      "postalCode": "46514"
+     },
+     "aliasNames": [],
+     "nameCode": {
+      "shortName": " Elkhart, IN, US"
+     }
+    }
+   ],
+   "requisitionTitle": "2nd Shift Welders",
+   "workLevelCode": {
+    "shortName": "Full Time"
+   }
+  },
+  {
+   "itemID": "9202065315106_1",
+   "clientRequisitionID": "1137",
+   "postDate": "2026-09-23T01:31:00",
+   "requisitionLocations": [
+    {
+     "address": {
+      "cityName": "Elkhart",
+      "countrySubdivisionLevel1": {
+       "codeValue": "IN"
+      },
+      "postalCode": "46514"
+     },
+     "aliasNames": [],
+     "nameCode": {
+      "shortName": " Elkhart, IN, US"
+     }
+    }
+   ],
+   "requisitionTitle": "Operations Support Coordinator",
+   "workLevelCode": {
+    "shortName": "Full Time"
+   }
+  },
+  {
+   "itemID": "bad id with spaces",
+   "requisitionTitle": "X"
+  },
+  {
+   "itemID": "9202000000000_1",
+   "requisitionTitle": "   "
+  },
+  null
+ ],
+ "meta": {
+  "startSequence": 0,
+  "totalNumber": 5
+ }
+}

@@ -79,6 +79,32 @@ const SPLIT_PAGE_BUDGET_FACTOR = 5;
 // not a second measurement.
 const EARLY_STOP_MARGIN_MS = 2 * 86_400_000;
 
+/**
+ * Search terms from `entry.keywords` (trimmed, deduped, empties dropped).
+ * Absent, empty, or `false` → [] — the full-board path, exactly as before.
+ * The term list and threshold come only from the entry, never from here.
+ */
+export function resolveKeywords(entry) {
+  const raw = entry?.keywords;
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const k of raw) {
+    if (typeof k !== 'string') continue;
+    const term = k.trim();
+    if (!term || seen.has(term.toLowerCase())) continue;
+    seen.add(term.toLowerCase());
+    out.push(term);
+  }
+  return out;
+}
+
+/** `entry.keyword_min_total` when it is a positive integer, else null (= always search). */
+function resolveKeywordMinTotal(entry) {
+  const v = entry?.keyword_min_total;
+  return Number.isInteger(v) && v > 0 ? v : null;
+}
+
 /** Resolve the page cap: a positive integer `max_pages` on the entry, capped. */
 function resolveMaxPages(entry) {
   const v = entry?.max_pages;
@@ -155,6 +181,117 @@ export function trueTotalFromFacets(facets) {
  *
  * Exported for the test suite.
  */
+// Student-type facet values ("Intern", "Intern (Fixed Term)", "Students", a
+// jobFamilyGroup like "Internships and Devlpmt Pgms"). Plain words, matched
+// whole-word and case-insensitively with an optional plural / 's suffix.
+// Overridden per entry by `facet_values` (an array of words/phrases — never a
+// regular expression; configuration is data, not code).
+const DEFAULT_FACET_VALUES = ['intern', 'internship', 'co-op', 'coop', 'student', 'contract', 'master', 'graduate', 'early career', 'early talent', 'campus', 'university', 'apprentice'];
+// Descriptors are matched on their first 200 characters only.
+const MAX_DESCRIPTOR_CHARS = 200;
+// A facet this wide is a place list or a requisition list, not a job-type tag.
+const MAX_STUDENT_FACET_VALUES = 200;
+// Shared facet-selection rule (same for every provider): facets naming places,
+// stores, sites, titles, brands or department codes are never job-type tags
+// ("Store → University Park" must not beat "workerSubType → Intern").
+const EXCLUDED_FACET_RE = /\b(?:locations?|cit(?:y|ies)|states?|countr(?:y|ies)|regions?|zip|postal|stores?|sites?|titles?|job titles?|brands?|department codes?)\b/i;
+// Facets that look like a worker/job type win over any other qualifying facet.
+const PREFERRED_FACET_RE = /\b(?:worker (?:sub )?types?|time types?|job types?|employment types?|job famil(?:y|ies)(?: groups?)?|categor(?:y|ies)|(?:experience|career) levels?|tags?)\b/i;
+/** "workerSubType" / "jobFamilyGroup" → "worker sub type" / "job family group", so word rules apply. */
+const facetWords = (s) => String(s ?? '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').toLowerCase();
+// "Internal Audit" / "International Tax" are never student tags, whatever the
+// word list says — blanked before matching, unconditionally.
+const INTERNAL_WORDS_RE = /\b(?:internal|international)\w*/gi;
+
+/** The word list for an entry: non-empty strings of `facet_values`, else the default list. */
+export function resolveFacetValues(entry) {
+  const raw = entry?.facet_values;
+  const words = Array.isArray(raw) ? raw.filter((w) => typeof w === 'string' && w.trim()).map((w) => w.trim()) : [];
+  return words.length > 0 ? words : [...DEFAULT_FACET_VALUES];
+}
+
+const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Build the descriptor matcher from plain words: each word escaped (so
+ * "co-op" or "c++" is literal), spaces inside a phrase match any whitespace or
+ * hyphen run, optional plural / possessive suffix ("Students", "Master's",
+ * "Internships"), whole-word, case-insensitive. Exported for the test suite.
+ */
+export function buildFacetValuesMatcher(words) {
+  const parts = words.map((w) => escapeRegExp(w).replace(/\s+/g, "[\\s-]+") + "(?:'?s)?");
+  const re = new RegExp(`(?<![\\p{L}\\p{N}])(?:${parts.join('|')})(?![\\p{L}\\p{N}])`, 'iu');
+  return (descriptor) => {
+    const text = String(descriptor).slice(0, MAX_DESCRIPTOR_CHARS).replace(INTERNAL_WORDS_RE, ' ');
+    return re.test(text);
+  };
+}
+
+/** Every facet in a CXS response, including ones nested under a group value (locationMainGroup → locations). */
+function flattenFacets(facets) {
+  const out = [];
+  const walk = (list) => {
+    for (const f of Array.isArray(list) ? list : []) {
+      if (!f || typeof f !== 'object') continue;
+      if (typeof f.facetParameter === 'string') out.push(f);
+      for (const v of Array.isArray(f.values) ? f.values : []) {
+        if (v && typeof v.facetParameter === 'string' && Array.isArray(v.values)) walk([v]);
+      }
+    }
+  };
+  walk(facets);
+  return out;
+}
+
+/**
+ * Pick the facet that tags student postings, and its matching values.
+ *
+ * Generic over tenants: a facet qualifies when some of its value descriptors
+ * satisfy `matches` (see buildFacetValuesMatcher), it is not an excluded
+ * facet, and it has at most MAX_STUDENT_FACET_VALUES values. Values need an id
+ * to be applied, and a reported count of 0 is dropped.
+ *
+ * Excluded: place/store/site/title/brand/department-code facets
+ * (EXCLUDED_FACET_RE). Several qualifying facets → worker/job-type-like ones
+ * (PREFERRED_FACET_RE) first, then the one whose matching values add up to the
+ * FEWEST jobs (but more than zero). Facets whose counts are all missing rank
+ * after counted ones. Only that one facet is used; facets are never merged.
+ *
+ * Returns { facetParameter, values: [{ id, descriptor, count }], total } or null.
+ * Exported for the test suite.
+ */
+export function chooseStudentFacet(facets, matches) {
+  let best = null;
+  for (const f of flattenFacets(facets)) {
+    const values = Array.isArray(f.values) ? f.values : [];
+    if (values.length === 0 || values.length > MAX_STUDENT_FACET_VALUES) continue;
+    const names = [facetWords(f.facetParameter), facetWords(f.descriptor)];
+    if (names.some((n) => EXCLUDED_FACET_RE.test(n))) continue;
+    const preferred = names.some((n) => PREFERRED_FACET_RE.test(n));
+    const matching = values.filter((v) => {
+      if (typeof v?.id !== 'string' || !v.id || typeof v.descriptor !== 'string') return false;
+      if (Number.isInteger(v.count) && v.count <= 0) return false;
+      return matches(v.descriptor);
+    });
+    if (matching.length === 0) continue;
+    const counted = matching.filter((v) => Number.isInteger(v.count));
+    const total = counted.length ? counted.reduce((a, v) => a + v.count, 0) : null;
+    // Preferred (worker/job-type-like) facets first; then fewest matching jobs > 0.
+    const rank = [preferred ? 0 : 1, total === null ? Infinity : total];
+    if (best === null || rank[0] < best.rank[0] || (rank[0] === best.rank[0] && rank[1] < best.rank[1])) {
+      best = {
+        facetParameter: f.facetParameter,
+        values: matching.map((v) => ({ id: v.id, descriptor: v.descriptor, count: Number.isInteger(v.count) ? v.count : null })),
+        total,
+        rank,
+      };
+    }
+  }
+  if (!best) return null;
+  const { rank: _rank, ...out } = best;
+  return out;
+}
+
 export function chooseSplitFacet(facets, { exclude = [] } = {}) {
   const skip = new Set(exclude);
   let best = null;
@@ -373,7 +510,7 @@ export default {
         referer: `${ep.jobBase}/`,
       },
     };
-    const makeBody = (offset, appliedFacets) => JSON.stringify({ limit: PAGE_SIZE, offset, searchText: '', appliedFacets });
+    const makeBody = (offset, appliedFacets, searchText = '') => JSON.stringify({ limit: PAGE_SIZE, offset, searchText, appliedFacets });
     const sinceMs = typeof ctx?.sinceMs === 'number' ? ctx.sinceMs : null;
     const maxPages = resolveMaxPages(entry);
 
@@ -389,8 +526,9 @@ export default {
     // which don't set ctx.maxPages.
     const ctxCap = Number.isInteger(ctx?.maxPages) && ctx.maxPages > 0 ? ctx.maxPages : Infinity;
 
-    // Shared across the unfaceted crawl and every slice, so one tenant's total
-    // cost is bounded no matter how its facets fan out.
+    // Shared across the unfaceted crawl and every slice of ONE query, so its
+    // cost is bounded no matter how its facets fan out. Reset per keyword term
+    // (each term is its own query with the same caps as the full board).
     const pageBudget = maxPages * SPLIT_PAGE_BUDGET_FACTOR;
     let pagesSpent = 0;
     let budgetExhausted = false;
@@ -401,10 +539,16 @@ export default {
      * ceiling while the facet counts — which are not clamped — describe a
      * bigger board. A probe (ctx.maxPages) never splits: it asked for one page.
      */
-    const isClamped = (total, facets) => {
+    const isClamped = (total, facets, appliedFacets) => {
       if (ctxCap !== Infinity) return false;
       if (total === null || total > WORKDAY_OFFSET_CEILING) return false;
-      const trueTotal = trueTotalFromFacets(facets);
+      // CXS keeps an active facet's alternative counts unfiltered by that
+      // facet (NVIDIA: Engineering total=1690, jobFamilyGroup still sums to
+      // 2678). Those counts describe the parent, not this slice. Including
+      // them falsely re-splits complete slices and exhausts the depth limit.
+      const trueTotal = trueTotalFromFacets(facets.filter(
+        (facet) => !Object.hasOwn(appliedFacets, facet?.facetParameter),
+      ));
       return trueTotal !== null && trueTotal > WORKDAY_OFFSET_CEILING;
     };
 
@@ -415,9 +559,14 @@ export default {
      * Returns the facets alongside the jobs because the caller needs them to
      * decide whether this query was clamped and, if so, what to split it on.
      */
-    const runQuery = async (appliedFacets) => {
+    const runQuery = async (appliedFacets, searchText = '', prefetched = undefined) => {
       pagesSpent++;
-      const first = await fetchJsonWithRetry(ctx, ep.api, { ...postOpts, body: makeBody(0, appliedFacets) }, RETRY_POLICY);
+      // `prefetched` is the unfiltered page 0 the keyword path already read to
+      // learn the board size; reusing it saves one request when the board turns
+      // out small enough to fetch whole.
+      const first = prefetched !== undefined
+        ? prefetched
+        : await fetchJsonWithRetry(ctx, ep.api, { ...postOpts, body: makeBody(0, appliedFacets, searchText) }, RETRY_POLICY);
       const jobs = parseWorkdayResponse(first, entry);
 
       const total = typeof first?.total === 'number' ? first.total : null;
@@ -457,7 +606,7 @@ export default {
       // is real and distinct, and it is the coverage floor the split builds on.
       // Only the pages *past* the ceiling are duplicates, and `total` being
       // clamped to the ceiling already stops pagination there.
-      const clamped = stopReason === 'complete' && isClamped(total, facets);
+      const clamped = stopReason === 'complete' && isClamped(total, facets, appliedFacets);
 
       // Sequential, not concurrent (mirrors providers/4dayweek.mjs, thehub.mjs,
       // arbeitnow.mjs, jibeapply.mjs) — a single tenant's API has no reason to
@@ -472,7 +621,7 @@ export default {
           pagesSpent++;
           let json;
           try {
-            json = await fetchJsonWithRetry(ctx, ep.api, { ...postOpts, body: makeBody(page * PAGE_SIZE, appliedFacets) }, RETRY_POLICY);
+            json = await fetchJsonWithRetry(ctx, ep.api, { ...postOpts, body: makeBody(page * PAGE_SIZE, appliedFacets, searchText) }, RETRY_POLICY);
           } catch (err) {
             const jobsSummary = `${jobs.length}${total !== null ? ` of ${total}` : ''} jobs`;
             // err.attempts (set by fetchJsonWithRetry) is the actual request count —
@@ -499,157 +648,256 @@ export default {
       return { jobs, total, facets, stopReason, clamped };
     };
 
-    const root = await runQuery({});
-    const { total, stopReason } = root;
+    /**
+     * One complete query: the unfaceted pass plus, when it comes back clamped,
+     * the facet split. `searchText` '' is the whole board; a keyword term runs
+     * the identical path, so a clamped keyword result is split the same way.
+     */
+    const crawl = async (searchText, prefetched, baseFacets = {}) => {
+      pagesSpent = 0;
+      budgetExhausted = false;
+      const root = await runQuery(baseFacets, searchText, prefetched);
+      const label = searchText ? `${entry.name} [searchText=${JSON.stringify(searchText)}]` : entry.name;
 
-    // Set when the split ran out of depth, slices, or splittable facets with
-    // part of the board still unreached — the difference between "this is the
-    // whole board" and "this is as much of it as we could get".
-    let splitIncomplete = false;
-    let slicesSpent = 0;
-    let jobs = root.jobs;
+      // Set when the split ran out of depth, slices, or splittable facets with
+      // part of the board still unreached — the difference between "this is the
+      // whole board" and "this is as much of it as we could get".
+      let splitIncomplete = false;
+      let slicesSpent = 0;
+      let jobs = root.jobs;
 
-    if (root.clamped) {
-      // Slices overlap wherever a posting carries several values of the split
-      // facet, and every slice re-includes what the unfaceted page 0 already
-      // returned, so the union is deduped on the posting URL. Only the split
-      // path dedups: an unclamped tenant returns exactly what it paginated.
+      if (root.clamped) {
+        // Slices overlap wherever a posting carries several values of the split
+        // facet, and every slice re-includes what the unfaceted page 0 already
+        // returned, so the union is deduped on the posting URL. Only the split
+        // path dedups: an unclamped tenant returns exactly what it paginated.
+        const seen = new Set();
+        const out = [];
+        const absorb = (pageJobs) => {
+          for (const job of pageJobs) {
+            if (seen.has(job.url)) continue;
+            seen.add(job.url);
+            out.push(job);
+          }
+        };
+
+        /**
+         * Absorb one query's jobs and, when it came back clamped, recurse into a
+         * facet that partitions it. `applied` accumulates the filters, `excluded`
+         * the facet parameters already spent — without which the next level would
+         * keep re-deriving the same partition.
+         */
+        const split = async (result, applied, depth, excluded) => {
+          absorb(result.jobs);
+          // A slice that stopped early is not a slice that finished. `clamped` is
+          // only ever true for stopReason 'complete', so without this the
+          // `!result.clamped` return below absorbs a slice's partial jobs and
+          // reports the board recovered — the one thing this path exists to
+          // avoid. 'early-stop' (and 'no-date-skip', which only drops postings
+          // the sweep would discard anyway) stay exempt: those slices are
+          // genuinely done for this sweep's purposes.
+          //
+          // 'cap' only counts against an UNCLAMPED query, matching the entry-cap
+          // warning below. A clamped query reports total at the ceiling, which is
+          // exactly maxPages * PAGE_SIZE, so it always ends at the cap — that is
+          // the clamp being detected, not pages going unread, and it is what the
+          // split then recovers. Tagging it would put "(still incomplete)" on
+          // every clamped board and say nothing.
+          if (result.stopReason === 'fetch-error' || (result.stopReason === 'cap' && !result.clamped)) {
+            splitIncomplete = true;
+          }
+          if (!result.clamped) return;
+
+          if (depth >= MAX_SPLIT_DEPTH) { splitIncomplete = true; return; }
+          const facet = chooseSplitFacet(result.facets, { exclude: excluded });
+          if (!facet) { splitIncomplete = true; return; }
+
+          for (const value of facet.values) {
+            if (slicesSpent >= MAX_SPLIT_SLICES) { splitIncomplete = true; break; }
+            if (pagesSpent >= pageBudget) { splitIncomplete = true; break; }
+            slicesSpent++;
+            await sleep(INTER_PAGE_DELAY_MS, ctx);
+            const nextApplied = { ...applied, [facet.facetParameter]: [value.id] };
+            // runQuery()'s page-0 fetch is unguarded — fine for the one page-0 of
+            // an ordinary board, but here it runs once per slice against a tenant
+            // that is by definition large, which is where a WAF or rate limiter
+            // lives. Letting it throw would abandon the whole tenant including
+            // the unfaceted crawl already absorbed into `out`, so a dead slice
+            // becomes an incomplete split and the rest of the partition is still
+            // tried. Same accounting as a slice that died mid-pagination.
+            let sliceResult;
+            try {
+              sliceResult = await runQuery(nextApplied, searchText);
+            } catch (err) {
+              const attempts = err.attempts ?? RETRY_POLICY.retries + 1;
+              console.error(`⚠️  workday: ${label} slice ${facet.facetParameter}=${value.id} failed on its first page after ${attempts} attempts: ${err.message}`);
+              splitIncomplete = true;
+              continue;
+            }
+            await split(
+              sliceResult,
+              nextApplied,
+              depth + 1,
+              [...excluded, facet.facetParameter],
+            );
+          }
+        };
+
+        await split(root, baseFacets, 0, Object.keys(baseFacets));
+        jobs = out;
+
+        // Distinct from the cap warning below: nothing about this tenant's entry
+        // can be edited to fix it, and the count that matters is what the split
+        // recovered on top of the ceiling.
+        const short = splitIncomplete || budgetExhausted ? ' (still incomplete)' : '';
+        console.error(`⚠️  workday: ${label} offset-clamped at ${WORKDAY_OFFSET_CEILING} — recovered ${jobs.length} jobs via ${slicesSpent} facet slices${short}`);
+      }
+      return { root, jobs, splitIncomplete, budgetExhausted };
+    };
+
+    const keywords = ctxCap === Infinity ? resolveKeywords(entry) : [];
+    if (keywords.length > 0) {
+      const minTotal = resolveKeywordMinTotal(entry);
+      // Learn the board size from the unfiltered page 0 (reported in the
+      // keywordSearch marker even when no threshold is set).
+      const firstPage = await fetchJsonWithRetry(ctx, ep.api, { ...postOpts, body: makeBody(0, {}) }, RETRY_POLICY);
+      let boardTotal = typeof firstPage?.total === 'number' ? firstPage.total : null;
+      // A clamped total (2000 with bigger facet sums) understates the board.
+      const facetTotal = trueTotalFromFacets(Array.isArray(firstPage?.facets) ? firstPage.facets : []);
+      if (boardTotal !== null && facetTotal !== null && facetTotal > boardTotal) boardTotal = facetTotal;
+      // Unknown total counts as big. Small board → the full fetch below, from
+      // the page already in hand.
+      if (minTotal === null || boardTotal === null || boardTotal > minTotal) {
+        // The site's own job-type tag first; keyword search only when no facet
+        // value looks like a student tag, or the tag holds nothing.
+        if (entry.facet !== false) {
+          const facet = chooseStudentFacet(firstPage?.facets, buildFacetValuesMatcher(resolveFacetValues(entry)));
+          if (facet) {
+            // CXS ORs the ids listed under one facetParameter, so one query
+            // covers every matching value (verified live: CVS workerSubType
+            // [56, 3929] → total 3985).
+            const applied = { [facet.facetParameter]: facet.values.map((v) => v.id) };
+            const res = await runQueries([{ key: facet.facetParameter, searchText: '', applied }]);
+            if (res.out.length > 0) {
+              const descriptors = facet.values.map((v) => v.descriptor);
+              return mark(res, { mode: 'facet', terms: 0, boardTotal, perTerm: {}, facet: { name: facet.facetParameter, values: descriptors } });
+            }
+            console.error(`⚠️  workday: ${entry.name} facet ${facet.facetParameter} returned nothing — falling back to keyword search`);
+          }
+        }
+        const res = await runQueries(keywords.map((term) => ({ key: term, searchText: term, applied: {} })));
+        return mark(res, { mode: 'keywords', terms: keywords.length, boardTotal, perTerm: res.perKey });
+      }
+      return finishFull(await crawl('', firstPage));
+    }
+    return finishFull(await crawl(''));
+
+    /**
+     * Run the normal query once per item (keyword term or facet filter) and
+     * merge, deduped on the requisition key (URL when the URL has none), in
+     * item order then page order.
+     */
+    async function runQueries(items) {
       const seen = new Set();
       const out = [];
-      const absorb = (pageJobs) => {
-        for (const job of pageJobs) {
-          if (seen.has(job.url)) continue;
-          seen.add(job.url);
+      const perKey = {};
+      let truncated = false;
+      let fetchFailed = false;
+      for (const item of items) {
+        const what = `${item.searchText ? 'keyword' : 'facet'} ${JSON.stringify(item.key)}`;
+        await sleep(INTER_PAGE_DELAY_MS, ctx);
+        let res;
+        try {
+          res = await crawl(item.searchText, undefined, item.applied);
+        } catch (err) {
+          const attempts = err.attempts ?? RETRY_POLICY.retries + 1;
+          console.error(`⚠️  workday: ${entry.name} ${what} failed on its first page after ${attempts} attempts: ${err.message}`);
+          perKey[item.key] = 0;
+          fetchFailed = true;
+          continue;
+        }
+        perKey[item.key] = res.jobs.length;
+        const sr = res.root.stopReason;
+        if ((sr === 'cap' && !res.root.clamped) || res.splitIncomplete || res.budgetExhausted) truncated = true;
+        if (sr === 'cap' && !res.root.clamped) {
+          console.error(`⚠️  workday: ${entry.name} ${what} truncated at max_pages=${maxPages} (${res.jobs.length}${res.root.total !== null ? ` of ${res.root.total}` : ''} jobs)`);
+        }
+        if (sr === 'fetch-error' || res.splitIncomplete || res.budgetExhausted) fetchFailed = true;
+        for (const job of res.jobs) {
+          const key = workdayDedupKey(job) ?? job.url;
+          if (seen.has(key)) continue;
+          seen.add(key);
           out.push(job);
         }
-      };
-
-      /**
-       * Absorb one query's jobs and, when it came back clamped, recurse into a
-       * facet that partitions it. `applied` accumulates the filters, `excluded`
-       * the facet parameters already spent — without which the next level would
-       * keep re-deriving the same partition.
-       */
-      const split = async (result, applied, depth, excluded) => {
-        absorb(result.jobs);
-        // A slice that stopped early is not a slice that finished. `clamped` is
-        // only ever true for stopReason 'complete', so without this the
-        // `!result.clamped` return below absorbs a slice's partial jobs and
-        // reports the board recovered — the one thing this path exists to
-        // avoid. 'early-stop' (and 'no-date-skip', which only drops postings
-        // the sweep would discard anyway) stay exempt: those slices are
-        // genuinely done for this sweep's purposes.
-        //
-        // 'cap' only counts against an UNCLAMPED query, matching the entry-cap
-        // warning below. A clamped query reports total at the ceiling, which is
-        // exactly maxPages * PAGE_SIZE, so it always ends at the cap — that is
-        // the clamp being detected, not pages going unread, and it is what the
-        // split then recovers. Tagging it would put "(still incomplete)" on
-        // every clamped board and say nothing.
-        if (result.stopReason === 'fetch-error' || (result.stopReason === 'cap' && !result.clamped)) {
-          splitIncomplete = true;
-        }
-        if (!result.clamped) return;
-
-        if (depth >= MAX_SPLIT_DEPTH) { splitIncomplete = true; return; }
-        const facet = chooseSplitFacet(result.facets, { exclude: excluded });
-        if (!facet) { splitIncomplete = true; return; }
-
-        for (const value of facet.values) {
-          if (slicesSpent >= MAX_SPLIT_SLICES) { splitIncomplete = true; break; }
-          if (pagesSpent >= pageBudget) { splitIncomplete = true; break; }
-          slicesSpent++;
-          await sleep(INTER_PAGE_DELAY_MS, ctx);
-          const nextApplied = { ...applied, [facet.facetParameter]: [value.id] };
-          // runQuery()'s page-0 fetch is unguarded — fine for the one page-0 of
-          // an ordinary board, but here it runs once per slice against a tenant
-          // that is by definition large, which is where a WAF or rate limiter
-          // lives. Letting it throw would abandon the whole tenant including
-          // the unfaceted crawl already absorbed into `out`, so a dead slice
-          // becomes an incomplete split and the rest of the partition is still
-          // tried. Same accounting as a slice that died mid-pagination.
-          let sliceResult;
-          try {
-            sliceResult = await runQuery(nextApplied);
-          } catch (err) {
-            const attempts = err.attempts ?? RETRY_POLICY.retries + 1;
-            console.error(`⚠️  workday: ${entry.name} slice ${facet.facetParameter}=${value.id} failed on its first page after ${attempts} attempts: ${err.message}`);
-            splitIncomplete = true;
-            continue;
-          }
-          await split(
-            sliceResult,
-            nextApplied,
-            depth + 1,
-            [...excluded, facet.facetParameter],
-          );
-        }
-      };
-
-      await split(root, {}, 0, []);
-      jobs = out;
-
-      // Distinct from the cap warning below: nothing about this tenant's entry
-      // can be edited to fix it, and the count that matters is what the split
-      // recovered on top of the ceiling.
-      const short = splitIncomplete || budgetExhausted ? ' (still incomplete)' : '';
-      console.error(`⚠️  workday: ${entry.name} offset-clamped at ${WORKDAY_OFFSET_CEILING} — recovered ${jobs.length} jobs via ${slicesSpent} facet slices${short}`);
-    }
-
-    // The cap is a safety net, not a working limit — silent by design, but a
-    // tenant that actually hits it needs to be surfaced, in one short line
-    // (a full-directory scan can hit this on dozens of tenants).
-    //
-    // "raise max_pages" only applies when `entry` is a real portals.yml
-    // tracked_companies entry — there is something to edit. scan-ats-full.mjs's
-    // reverse scan synthesizes entries from the external dataset, so there's no
-    // portal entry to point at, and no fixed cap can guarantee full coverage of
-    // an unbounded company directory anyway; nothing else to suggest there.
-    //
-    // The branch below used to key on `sinceMs === null` as a proxy for that
-    // distinction, which held only because scan-ats-full.mjs was the sole
-    // caller setting it. #2418 broke the proxy — `scan.mjs --since` sets
-    // ctx.sinceMs too, so a tracked entry lost the actionable half of the
-    // message on every --since run (#2495). Provenance is now stated by the
-    // caller instead of inferred from an unrelated flag, so a future caller
-    // that starts setting sinceMs cannot re-couple the two concerns.
-    //
-    // Absence means "tracked": scan-ats-full.mjs is the only caller that
-    // synthesizes entries AND can reach the cap (discover-ats.mjs and
-    // verify-portals.mjs both probe with ctx.maxPages: 1, which never sets
-    // stopReason to 'cap'), so it is the one place that opts out.
-    const syntheticEntries = ctx?.syntheticEntries === true;
-    if (stopReason === 'cap' && !root.clamped) {
-      const jobsSummary = `${jobs.length}${total !== null ? ` of ${total}` : ''} jobs`;
-      if (!syntheticEntries) {
-        console.error(`⚠️  workday: ${entry.name} truncated at max_pages=${maxPages} (${jobsSummary}) — raise max_pages on this entry for more`);
-      } else {
-        // Workday's CXS backend can report `total` as exactly
-        // maxPages*PAGE_SIZE when the real count is far higher (e.g.
-        // dickssportinggoods: total=2000, public site lists 7,120; requests
-        // at offset 2000/4000 return the same first posting as offset 0).
-        // Flag it, don't explain it here. A tenant whose facets prove the
-        // clamp takes the facet-split path above instead of this warning.
-        const suspectTag = total !== null && total === maxPages * PAGE_SIZE ? ' (total may be Workday-capped, not real)' : '';
-        console.error(`⚠️  workday: ${entry.name} truncated at ${maxPages} pages (${jobsSummary})${suspectTag}`);
       }
+      return { out, perKey, truncated, fetchFailed };
     }
-    // 'no-date-skip' hits many tenants in a full-directory scan (a company
-    // with several Workday sites, like a1group or ashealthnet, triggers it
-    // once per site) — a console.error per hit would repeat thousands of
-    // times, so tag the array instead; scan-ats-full.mjs aggregates it into
-    // one summary line.
-    if (stopReason === 'no-date-skip') jobs.workdayNoDateSkip = true;
-    // 'fetch-error' means retries were exhausted mid-pagination while 19
-    // other tenants were hammering the same uplink. scan-ats-full.mjs
-    // collects tagged tenants and retries them sequentially after the
-    // parallel sweep, when the line is quiet — same array-tag pattern as
-    // workdayNoDateSkip (no extra per-tenant logging here).
-    if (stopReason === 'fetch-error') jobs.workdayTruncated = true;
-    // A split that could not reach the whole board is the same kind of partial
-    // result, and scan-ats-full.mjs already knows how to report that tag.
-    if (splitIncomplete || budgetExhausted) jobs.workdayTruncated = true;
 
-    return jobs;
+    function mark({ out, truncated, fetchFailed }, keywordSearch) {
+      out.keywordSearch = keywordSearch;
+      if (truncated) out.truncated = true;
+      if (fetchFailed) out.workdayTruncated = true;
+      return out;
+    }
+
+    function finishFull({ root, jobs, splitIncomplete, budgetExhausted }) {
+      const { total, stopReason } = root;
+
+      // The cap is a safety net, not a working limit — silent by design, but a
+      // tenant that actually hits it needs to be surfaced, in one short line
+      // (a full-directory scan can hit this on dozens of tenants).
+      //
+      // "raise max_pages" only applies when `entry` is a real portals.yml
+      // tracked_companies entry — there is something to edit. scan-ats-full.mjs's
+      // reverse scan synthesizes entries from the external dataset, so there's no
+      // portal entry to point at, and no fixed cap can guarantee full coverage of
+      // an unbounded company directory anyway; nothing else to suggest there.
+      //
+      // The branch below used to key on `sinceMs === null` as a proxy for that
+      // distinction, which held only because scan-ats-full.mjs was the sole
+      // caller setting it. #2418 broke the proxy — `scan.mjs --since` sets
+      // ctx.sinceMs too, so a tracked entry lost the actionable half of the
+      // message on every --since run (#2495). Provenance is now stated by the
+      // caller instead of inferred from an unrelated flag, so a future caller
+      // that starts setting sinceMs cannot re-couple the two concerns.
+      //
+      // Absence means "tracked": scan-ats-full.mjs is the only caller that
+      // synthesizes entries AND can reach the cap (discover-ats.mjs and
+      // verify-portals.mjs both probe with ctx.maxPages: 1, which never sets
+      // stopReason to 'cap'), so it is the one place that opts out.
+      const syntheticEntries = ctx?.syntheticEntries === true;
+      if (stopReason === 'cap' && !root.clamped) {
+        const jobsSummary = `${jobs.length}${total !== null ? ` of ${total}` : ''} jobs`;
+        if (!syntheticEntries) {
+          console.error(`⚠️  workday: ${entry.name} truncated at max_pages=${maxPages} (${jobsSummary}) — raise max_pages on this entry for more`);
+        } else {
+          // Workday's CXS backend can report `total` as exactly
+          // maxPages*PAGE_SIZE when the real count is far higher (e.g.
+          // dickssportinggoods: total=2000, public site lists 7,120; requests
+          // at offset 2000/4000 return the same first posting as offset 0).
+          // Flag it, don't explain it here. A tenant whose facets prove the
+          // clamp takes the facet-split path above instead of this warning.
+          const suspectTag = total !== null && total === maxPages * PAGE_SIZE ? ' (total may be Workday-capped, not real)' : '';
+          console.error(`⚠️  workday: ${entry.name} truncated at ${maxPages} pages (${jobsSummary})${suspectTag}`);
+        }
+      }
+      // 'no-date-skip' hits many tenants in a full-directory scan (a company
+      // with several Workday sites, like a1group or ashealthnet, triggers it
+      // once per site) — a console.error per hit would repeat thousands of
+      // times, so tag the array instead; scan-ats-full.mjs aggregates it into
+      // one summary line.
+      if (stopReason === 'no-date-skip') jobs.workdayNoDateSkip = true;
+      // 'fetch-error' means retries were exhausted mid-pagination while 19
+      // other tenants were hammering the same uplink. scan-ats-full.mjs
+      // collects tagged tenants and retries them sequentially after the
+      // parallel sweep, when the line is quiet — same array-tag pattern as
+      // workdayNoDateSkip (no extra per-tenant logging here).
+      if (stopReason === 'fetch-error') jobs.workdayTruncated = true;
+      // A split that could not reach the whole board is the same kind of partial
+      // result, and scan-ats-full.mjs already knows how to report that tag.
+      if (splitIncomplete || budgetExhausted) jobs.workdayTruncated = true;
+
+      return jobs;
+    }
   },
 };

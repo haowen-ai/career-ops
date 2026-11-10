@@ -247,6 +247,18 @@ try {
   } else {
     fail(`phenom ctx.maxPages stop should not warn about raising max_pages: ${JSON.stringify(ctxCapWarnings)}`);
   }
+  // 2026-11-08 regression (Honda): careers.honda.com/global/en/job/<id>/... redirects
+  // to the home page while /us/en/job/<id>/... is the live posting. A tenant entry's
+  // urlPrefix must drive the stored job URL (slashes trimmed).
+  {
+    const hondaCfg = phConfig({ name: 'Honda', careers_url: 'https://careers.honda.com/us/en/search-results', phenom: { urlPrefix: '/us/en/' } });
+    const { rows: hRows } = parseRefineSearch({ refineSearch: { totalHits: 1, data: { jobs: [{ jobId: '12866', title: 'Engineering Co-op', city: 'Raymond', state: 'Ohio', country: 'United States' }] } } }, hondaCfg);
+    if (hondaCfg.urlPrefix === 'us/en' && hondaCfg.lang === 'en_global' && hRows.length === 1 && hRows[0].url === 'https://careers.honda.com/us/en/job/12866/Engineering-Co-op') {
+      pass('phenom: entry urlPrefix us/en builds /us/en/job/<id>/<slug> URLs (Honda global/en redirect regression)');
+    } else {
+      fail(`phenom Honda urlPrefix wrong: prefix=${hondaCfg.urlPrefix} url=${hRows[0] && hRows[0].url}`);
+    }
+  }
 } catch (e) {
   fail(`phenom provider tests crashed: ${e.message}`);
 }

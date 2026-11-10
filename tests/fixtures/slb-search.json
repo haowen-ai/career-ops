@@ -1,0 +1,45 @@
+{
+ "totalCount": 3,
+ "totalCountFiltered": 3,
+ "results": [
+  {
+   "title": "Local HazMat CDL Driver",
+   "uri": "https://careers.slb.com/jobdescription.aspx?id=WDR00136646",
+   "clickUri": "https://careers.slb.com/jobdescription.aspx?id=WDR00136646",
+   "raw": {
+    "title": "Local HazMat CDL Driver",
+    "city": "Vernal",
+    "country": [
+     "United States"
+    ],
+    "jobposteddate": 1793865600000
+   }
+  },
+  {
+   "title": "CPL Field Specialist",
+   "uri": "https://careers.slb.com/jobdescription.aspx?id=EF10127-en_US 1",
+   "clickUri": "https://careers.slb.com/jobdescription.aspx?id=EF10127-en_US 1",
+   "raw": {
+    "title": "CPL Field Specialist",
+    "city": "Houma",
+    "country": [
+     "United States"
+    ],
+    "jobposteddate": 1793312820000
+   }
+  },
+  {
+   "title": "Learning & Competency Training Intern",
+   "uri": "https://careers.slb.com/jobdescription.aspx?id=EF18559-en_US 1",
+   "clickUri": "https://careers.slb.com/jobdescription.aspx?id=EF18559-en_US 1",
+   "raw": {
+    "title": "Learning & Competency Training Intern",
+    "city": "Houston",
+    "country": [
+     "United States"
+    ],
+    "jobposteddate": 1790189760000
+   }
+  }
+ ]
+}

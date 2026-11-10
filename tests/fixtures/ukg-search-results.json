@@ -1,0 +1,84 @@
+{
+ "opportunities": [
+  {
+   "Id": "ab6abb0f-a27c-42b7-b276-29da4ec0f71a",
+   "Title": "Invoice Analyst",
+   "RequisitionNumber": "INVOI003418",
+   "FullTime": true,
+   "PostedDate": "2026-11-06T21:59:06.649Z",
+   "Locations": [
+    {
+     "Id": "20a3f022-92bd-5f60-b567-8c9161a3afd4",
+     "LocalizedName": null,
+     "LocalizedLocationId": "FRTX2",
+     "LocalizedDescription": "Frisco, TX - Cowboys Way",
+     "Address": {
+      "Line1": "6303 Cowboys Way",
+      "Line2": null,
+      "City": "Frisco",
+      "PostalCode": "75034",
+      "State": {
+       "Code": "TX",
+       "Name": "Texas"
+      },
+      "Country": {
+       "Code": "USA",
+       "Name": "United States"
+      }
+     },
+     "DisplayName": false,
+     "DisplayLocationId": false,
+     "DisplayAddress": true,
+     "DisplayStreetAddress": false,
+     "DisplayDescription": false,
+     "SourceOfTruth": 1
+    }
+   ]
+  },
+  {
+   "Id": "daedb709-29c1-40f0-a26e-259611f9bcfd",
+   "Title": "Capital Budget Specialist",
+   "RequisitionNumber": "CAPIT003542",
+   "FullTime": true,
+   "PostedDate": "2026-11-06T19:40:45.836Z",
+   "Locations": [
+    {
+     "Id": "20a3f022-92bd-5f60-b567-8c9161a3afd4",
+     "LocalizedName": null,
+     "LocalizedLocationId": "FRTX2",
+     "LocalizedDescription": "Frisco, TX - Cowboys Way",
+     "Address": {
+      "Line1": "6303 Cowboys Way",
+      "Line2": null,
+      "City": "Frisco",
+      "PostalCode": "75034",
+      "State": {
+       "Code": "TX",
+       "Name": "Texas"
+      },
+      "Country": {
+       "Code": "USA",
+       "Name": "United States"
+      }
+     },
+     "DisplayName": false,
+     "DisplayLocationId": false,
+     "DisplayAddress": true,
+     "DisplayStreetAddress": false,
+     "DisplayDescription": false,
+     "SourceOfTruth": 1
+    }
+   ]
+  },
+  {
+   "Id": "not-a-guid",
+   "Title": "Bad"
+  },
+  {
+   "Id": "ab6abb0f-a27c-42b7-b276-29da4ec0f7ff",
+   "Title": ""
+  },
+  null
+ ],
+ "totalCount": 5
+}

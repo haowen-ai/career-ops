@@ -479,6 +479,31 @@ try {
     fail('a slice that stopped past the --since window is complete for the sweep and must not tag workdayTruncated');
   }
 
+  // Live NVIDIA keeps the active category's parent-wide counts in each
+  // filtered response. Complete slices must not recurse on those counts.
+  const activeFacet = { facetParameter: 'jobFamily', values: [{ id: 'a', count: 1500 }, { id: 'b', count: 1200 }] };
+  const activeCalls = [];
+  const { result: activeJobs, errors: activeErrors } = await captureConsoleErrors(() => workday.fetch(
+    { ...ENTRY, max_pages: 1500 }, mkCtx(async (_url, opts) => {
+      const body = JSON.parse(opts.body);
+      const key = sliceKey(body.appliedFacets);
+      activeCalls.push(key);
+      const count = key === '' ? 2000 : key === 'jobFamily=a' ? 1500 : 1200;
+      return {
+        total: count,
+        facets: [activeFacet, { facetParameter: 'workerSubType', values: [{ id: 'regular', count }] }],
+        jobPostings: postings(key || 'root', body.offset, Math.min(20, count - body.offset)),
+      };
+    }, { includeUndated: true }),
+  ));
+  if (activeJobs.length === 4700 && activeJobs.workdayTruncated === undefined
+    && activeCalls.length === 235 && activeCalls.every((key) => ['', 'jobFamily=a', 'jobFamily=b'].includes(key))
+    && !activeErrors.some((line) => line.includes('still incomplete'))) {
+    pass('workday.fetch() ignores unfiltered active-facet counts while fetching every complete slice');
+  } else {
+    fail(`active-facet recovery: jobs=${activeJobs.length}, truncated=${activeJobs.workdayTruncated}, requests=${activeCalls.length}`);
+  }
+
   // The unclamped path must not pay for any of this.
   const healthyCalls = [];
   await workday.fetch(ENTRY, mkCtx(async (_url, opts) => {

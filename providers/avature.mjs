@@ -28,6 +28,22 @@ import { sleep } from './_http.mjs';
 // Location isn't rendered in every tenant's list (the subtitle is Job ID /
 // hire-type / posted-date); we extract it when a marker is present and leave it
 // empty otherwise. postedAt comes from the "Posted DD-Mon-YYYY" subtitle.
+//
+// 2026-11-07 additions:
+//   - Result-class match is token-based: Deloitte renders `class="article--result "`
+//     (no leading `article`), which the old literal prefix missed → silent 0.
+//   - Legacy layout (KPMG US, uskpmgats.avature.net/careers/SearchResults):
+//     `<div class="result">` rows linking `JobDetail?jobId=N`, subtitle
+//     "<Practice> - <City, ST>; <City, ST>". Parsed when no <article> rows exist.
+//   - Page size is NOT always 6 (Lenovo/Deloitte/Lululemon/KPMG serve 10,
+//     Bloomberg 12). The offset now advances by the number of rows the page
+//     actually returned, and "short page" means shorter than page 0.
+//   - Never silent-empty on a layout change: if page 0 links job/pipeline
+//     detail pages but nothing parsed, fetch() throws. A `PipelineDetail` page
+//     (HSBC's mycareer.hsbc.com is a talent-pipeline board, not job postings)
+//     throws with that explanation.
+// Bot walls seen (not bypassed): careers.cbre.com and careers.ralphlauren.com
+// answer 202 with an AWS WAF JavaScript challenge (challenge.js).
 
 const PAGE_SIZE = 6; // Avature serves exactly 6 results per page
 const DEFAULT_MAX_PAGES = 50; // ~300 postings; override via entry.max_pages
@@ -54,7 +70,8 @@ function resolveConfig(entry) {
   if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
   // Honour an explicit SearchJobs path (branded tenants may prefix a locale,
   // e.g. /en_US/searchjobs/SearchJobs); otherwise default to the classic path.
-  const searchPath = /\/SearchJobs\b/i.test(u.pathname) ? u.pathname.replace(/\/+$/, '') : '/careers/SearchJobs';
+  // Legacy tenants (KPMG US) list jobs under /careers/SearchResults instead.
+  const searchPath = /\/Search(?:Jobs|Results)\b/i.test(u.pathname) ? u.pathname.replace(/\/+$/, '') : '/careers/SearchJobs';
   return { searchUrl: `${u.origin}${searchPath}`, origin: u.origin };
 }
 
@@ -90,7 +107,9 @@ export function parseArticles(htmlText, origin) {
   const out = [];
   // Tenants vary the result class: Synopsys uses `article--result`, Siemens
   // appends a position index (`article--result 1`). Accept any suffix.
-  const re = /<article class="article article--result[^"]*"[\s\S]*?<\/article>/g;
+  // Deloitte drops the leading `article` token (`class="article--result "`), so
+  // match the article--result token anywhere in the class attribute.
+  const re = /<article class="[^"]*\barticle--result\b[^"]*"[\s\S]*?<\/article>/g;
   let a;
   while ((a = re.exec(htmlText)) !== null) {
     const block = a[0];
@@ -118,6 +137,62 @@ export function parseArticles(htmlText, origin) {
     });
   }
   return out;
+}
+
+// Legacy Avature layout (KPMG US): one <div class="result"> per row with the
+// title anchor on `.../JobDetail?jobId=N...` and a <span> subtitle
+// "<Practice> - <locations>". The tracking query (srcCat/specSrc) is dropped
+// from the stored URL; jobId alone resolves the posting.
+/** @param {string} htmlText @param {string} origin */
+export function parseLegacyResults(htmlText, origin) {
+  const out = [];
+  const re = /<a href="([^"]*\/JobDetail\?jobId=(\d+)[^"]*)"[^>]*>([\s\S]*?)<\/a>\s*<\/p>\s*<span[^>]*>([\s\S]*?)<\/span>/g;
+  let m;
+  while ((m = re.exec(htmlText)) !== null) {
+    const title = clean(m[3]);
+    if (!title) continue;
+    const id = m[2];
+    let base;
+    try {
+      const u = new URL(decodeEntities(m[1]), origin);
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') continue;
+      base = `${u.origin}${u.pathname}`;
+    } catch {
+      continue;
+    }
+    const sub = clean(m[4].replace(/&nbsp;/g, ' '));
+    const dash = sub.indexOf(' - ');
+    const location = dash >= 0 ? sub.slice(dash + 3).trim() : '';
+    out.push({ id, title, url: `${base}?jobId=${id}`, location, postedAt: undefined });
+  }
+  return out;
+}
+
+/**
+ * Parse one search page: modern <article> rows first, else the legacy layout.
+ * @param {string} htmlText @param {string} origin
+ */
+export function parsePage(htmlText, origin) {
+  const arts = parseArticles(htmlText, origin);
+  return arts.length ? arts : parseLegacyResults(htmlText, origin);
+}
+
+/**
+ * Count unencoded detail links on a page — evidence that the page DOES list
+ * postings, used to turn "parsed 0" into an error instead of a silent empty.
+ * @param {string} htmlText
+ * @returns {{jobs: number, pipelines: number}}
+ */
+/** Distinct JobDetail hrefs on a page = rows the server returned (parsed or not). */
+export function countJobRows(htmlText) {
+  if (typeof htmlText !== 'string') return 0;
+  return new Set(htmlText.match(/href="[^"]*\/JobDetail[/?][^"]*"/g) || []).size;
+}
+
+export function countDetailLinks(htmlText) {
+  const jobs = (htmlText.match(/href="[^"]*\/JobDetail[/?][^"]*"/g) || []).length;
+  const pipelines = (htmlText.match(/href="[^"]*\/PipelineDetail\/[^"]*"/g) || []).length;
+  return { jobs, pipelines };
 }
 
 /** @type {Provider} */
@@ -155,12 +230,25 @@ export default {
     const jobs = [];
     const seen = new Set();
 
-    const getPage = async (param, page) => {
-      const htmlText = await ctx.fetchText(`${cfg.searchUrl}?${param}=${page * PAGE_SIZE}`, {
+    const getPage = async (param, offset) => {
+      const htmlText = await ctx.fetchText(`${cfg.searchUrl}?${param}=${offset}`, {
         redirect: 'error',
         headers: { accept: 'text/html' },
       });
-      return parseArticles(htmlText, cfg.origin);
+      const parsed = parsePage(htmlText, cfg.origin);
+      if (offset === 0 && parsed.length === 0 && typeof htmlText === 'string') {
+        const links = countDetailLinks(htmlText);
+        if (links.jobs > 0) {
+          throw new Error(`avature: ${entry.name}: page lists ${links.jobs} JobDetail links but none parsed — layout changed`);
+        }
+        if (links.pipelines > 0) {
+          throw new Error(`avature: ${entry.name}: page lists only talent-pipeline entries (PipelineDetail), no job postings — wrong careers_url/provider`);
+        }
+      }
+      // Server-side row count drives paging, so one unparsable card does not
+      // look like a short (last) page or shift the offset.
+      parsed.rows = Math.max(parsed.length, countJobRows(htmlText));
+      return parsed;
     };
     // Absorb a page's articles, returning how many were not already seen.
     const absorb = (articles) => {
@@ -180,9 +268,13 @@ export default {
       return fresh;
     };
 
+    // Offset of the next page = rows returned so far (page size varies by
+    // tenant: 6, 10, 12 …). pageSize is learned from page 0.
+    let offset = 0;
+    let pageSize = PAGE_SIZE;
     for (let page = 0; page < maxPages; page++) {
       if (page > 0) await sleep(INTER_PAGE_DELAY_MS, ctx);
-      let articles = await getPage(offsetParam, page);
+      let articles = await getPage(offsetParam, offset);
       let fresh = absorb(articles);
 
       // Self-heal: the first paginated page didn't advance — either it repeated
@@ -196,7 +288,7 @@ export default {
       if (fresh === 0 && canHeal && page === 1) {
         canHeal = false;
         await sleep(INTER_PAGE_DELAY_MS, ctx);
-        const altArticles = await getPage(FALLBACK_OFFSET_PARAM, page);
+        const altArticles = await getPage(FALLBACK_OFFSET_PARAM, offset);
         const altFresh = absorb(altArticles);
         if (altFresh > 0) {
           offsetParam = FALLBACK_OFFSET_PARAM;
@@ -206,7 +298,10 @@ export default {
       }
 
       if (fresh === 0) break; // empty page / looped / offset ignored / last page
-      if (articles.length < PAGE_SIZE) break; // last page
+      const rows = articles.rows ?? articles.length;
+      if (page === 0) pageSize = rows;
+      if (rows < pageSize) break; // last page (shorter than page 0)
+      offset += rows;
     }
     return jobs;
   },

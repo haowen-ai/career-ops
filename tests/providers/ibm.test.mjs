@@ -94,6 +94,28 @@ try {
   if (calls === 2 && fetched.length === 32) pass('ibm.fetch() paginates and stops on the first short page');
   else fail(`ibm.fetch() made ${calls} calls, returned ${fetched.length} jobs`);
 
+  // title_query + company — an acquired brand listed on IBM careers (Confluent moved
+  // there in 2026: careers.confluent.io redirects to ibm.com/careers/search?q=confluent).
+  // The query matches the title only, so IBM roles that merely mention the brand in the
+  // description stay out, and the rows carry the brand name the entry is tracked under.
+  const bodies = [];
+  const brandCtx = {
+    fetchJson: async (_url, opts) => {
+      bodies.push(JSON.parse(opts.body));
+      return { hits: { hits: [{ _source: { title: 'Confluent - Software Developer - Intern Conversion', url: 'https://careers.ibm.com/careers/JobDetail?jobId=1' } }] } };
+    },
+  };
+  const brand = await ibm.fetch({ name: 'Confluent', ibm: { title_query: 'confluent', company: 'Confluent' } }, brandCtx);
+  const must = bodies[0]?.query?.bool?.must ?? [];
+  if (must.length === 1 && must[0]?.simple_query_string?.query === 'confluent' && JSON.stringify(must[0].simple_query_string.fields) === '["title"]') pass('ibm.fetch() sends title_query as a title-only search');
+  else fail(`ibm.fetch() title_query body = ${JSON.stringify(bodies[0]?.query)}`);
+  if (brand.length === 1 && brand[0].company === 'Confluent') pass('ibm.fetch() labels rows with the configured company');
+  else fail(`ibm.fetch() brand rows = ${JSON.stringify(brand)}`);
+  bodies.length = 0;
+  const plain = await ibm.fetch({ name: 'IBM' }, brandCtx);
+  if ((bodies[0]?.query?.bool?.must ?? []).length === 0 && plain[0].company === 'IBM') pass('ibm.fetch() without title_query keeps the unfiltered IBM search');
+  else fail(`ibm.fetch() plain body = ${JSON.stringify(bodies[0]?.query)}`);
+
 } catch (e) {
   fail(`ibm provider tests crashed: ${e.message}`);
 }

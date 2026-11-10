@@ -1,0 +1,75 @@
+{
+ "jobs": [
+  {
+   "uniqueID": "PDX_FEC_73501EFE-C3D3-4427-AC49-8462A36ECC6B_235537",
+   "reference": "P25-363956-4",
+   "title": "Straight Truck Driver DOT-1",
+   "companyName": "paradox-fedexapi.paradox.ai-FedEx",
+   "brandName": "Federal Express Corporation",
+   "locations": [
+    {
+     "city": "Louisville",
+     "state": "Kentucky",
+     "stateAbbr": "KY",
+     "country": "United States",
+     "countryAbbr": "US",
+     "locationParsedText": "4441 Produce Rd, Louisville, KY 40218, United States",
+     "cityStateAbbr": "Louisville, KY"
+    }
+   ],
+   "isRemote": false,
+   "employmentType": [
+    "Full Time"
+   ],
+   "applyURL": "https://fedex.paradox.ai/co/FederalExpressCorporation41/Job?job_id=P25-363956-4&posting_type=1",
+   "originalURL": "straight-truck-driver-dot-1/job/P25-363956-4"
+  },
+  {
+   "uniqueID": "PDX_FEC_3B2095A3-2FEF-4DE5-B966-9395D3B5012C_235537",
+   "reference": "P25-358534-7",
+   "title": "Courier/DOT-10",
+   "companyName": "paradox-fedexapi.paradox.ai-FedEx",
+   "brandName": "Federal Express Corporation",
+   "locations": [
+    {
+     "city": "Louisville",
+     "state": "Kentucky",
+     "stateAbbr": "KY",
+     "country": "United States",
+     "countryAbbr": "US",
+     "locationParsedText": "4441 Produce Rd, Louisville, KY 40218, United States",
+     "cityStateAbbr": "Louisville, KY"
+    }
+   ],
+   "isRemote": false,
+   "employmentType": [
+    "Part Time"
+   ],
+   "applyURL": "https://fedex.paradox.ai/co/FederalExpressCorporation41/Job?job_id=P25-358534-7&posting_type=1",
+   "originalURL": "courier-dot-10/job/P25-358534-7"
+  },
+  {
+   "uniqueID": "PDX_DRSC_2D67F3A4-EBBF-484B-990E-1C2E5379B64B_88118",
+   "reference": "P14-84015-0",
+   "title": "Accounts Receivable Coordinator",
+   "companyName": "paradox-dardenapi.paradox.ai-Darden Restaurant Support Center",
+   "locations": [
+    {
+     "city": "Orlando",
+     "state": "Florida",
+     "stateAbbr": "FL",
+     "country": "United States",
+     "countryAbbr": "US",
+     "locationParsedText": "1000 Darden Center Dr, Orlando, FL 32837, United States",
+     "cityStateAbbr": "Orlando, FL"
+    }
+   ],
+   "isRemote": false,
+   "employmentType": [],
+   "applyURL": "https://darden.paradox.ai/co/DardenRestaurantSupportCenter/Job?job_id=PDX_DRSC_2D67F3A4-EBBF-484B-990E-1C2E5379B64B_88118",
+   "originalURL": "https://darden.paradox.ai/co/DardenRestaurantSupportCenter/Job?job_id=PDX_DRSC_2D67F3A4-EBBF-484B-990E-1C2E5379B64B_88118"
+  }
+ ],
+ "facets": [],
+ "totalJob": 3
+}

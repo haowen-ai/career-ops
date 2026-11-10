@@ -423,6 +423,24 @@ try {
     fail(`retry: attempts=${attempts}, slept=${slept}, jobs=${JSON.stringify(retried)}`);
   }
 
+  // Entry `max_pages` replaces the 25-page default up or down; without it the
+  // walk still stops at 25 x 200 = 5000.
+  {
+    const bigCtx = (total) => ({
+      transport: 'http', sleep: async () => {},
+      fetchText: async () => { throw new Error('unused'); },
+      fetchJson: async (url) => {
+        const offset = Number(new URL(url).searchParams.get('finder').match(/offset=(\d+)/)?.[1] ?? 0);
+        const list = Array.from({ length: Math.max(0, Math.min(200, total - offset)) }, (_, i) => ({ Id: String(offset + i), Title: `Role ${offset + i}` }));
+        return { items: [{ TotalJobsCount: total, requisitionList: list }] };
+      },
+    });
+    const capped = await oc.fetch({ name: 'BigOracle', careers_url: careers }, bigCtx(8175));
+    const raised = await oc.fetch({ name: 'BigOracle', careers_url: careers, max_pages: 100 }, bigCtx(8175));
+    if (capped.length === 5000 && raised.length === 8175) pass('oraclecloud: default stops at 5000; entry max_pages:100 reads all 8175');
+    else fail(`oraclecloud max_pages raise: default ${capped.length}, raised ${raised.length}`);
+  }
+
 } catch (e) {
   fail(`oraclecloud provider tests crashed: ${e.message}`);
 }

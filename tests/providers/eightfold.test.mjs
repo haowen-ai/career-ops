@@ -137,6 +137,19 @@ try {
     fail(`buildApiUrl returned ${paged}`);
   }
 
+  const campus = resolveTenant({ name: 'Acme', careers_url: 'https://acme.eightfold.ai/careers?domain=acme.example&microsite=campus-site' });
+  const campusUrl = campus && new URL(buildApiUrl(campus, 0, 10)).searchParams;
+  if (campus?.microsite === 'campus-site' && campusUrl?.get('microsite') === 'campus-site' && campusUrl.get('domain') === 'acme.example') {
+    pass('resolveTenant()/buildApiUrl() carry ?microsite= to the jobs API');
+  } else {
+    fail(`microsite not carried: ${JSON.stringify(campus)}`);
+  }
+  if (!('microsite' in (tenant || {})) && !new URL(buildApiUrl(tenant, 0, 10)).searchParams.has('microsite')) {
+    pass('no microsite param when the entry has none');
+  } else {
+    fail('microsite leaked into a plain tenant');
+  }
+
   const fallbackUrl = buildJobUrl({ host: 'acme.eightfold.ai', domain: 'acme.example' }, '99');
   if (hostOf(fallbackUrl) === 'acme.eightfold.ai' && new URL(fallbackUrl).searchParams.get('pid') === '99') {
     pass('buildJobUrl() builds the tenant fallback posting URL from a pid');

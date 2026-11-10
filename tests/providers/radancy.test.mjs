@@ -325,6 +325,38 @@ try {
   } else {
     fail(`radancy truncation warning: returned ${overshootJobs?.length}, warned "${warned}" (expected 4 / "4")`);
   }
+
+  // Every page the server reports was walked, but its result total is higher than the
+  // rows it lists (L'Oréal 2026-11-03: data-total-results=1711, data-total-pages=17,
+  // 1689 unique rows on those 17 pages under every sort). Nothing was left behind, so
+  // this must not be reported as a truncation — and a walk that stopped early still is.
+  const walkCtx = (pages, perPage, total, failAt) => {
+    let page = 0;
+    return {
+      sleep: async () => {},
+      fetchJson: async () => {
+        page++;
+        if (page === failAt) throw new Error('blip');
+        const ids = Array.from({ length: page === pages ? perPage - 1 : perPage }, (_, i) => page * 100 + i);
+        return { results: `<section data-total-results="${total}" data-total-pages="${pages}">${ids.map(rowFor).join('')}</section>`, hasJobs: true };
+      },
+      fetchText: async () => { throw new Error('unused'); },
+    };
+  };
+  const walkWarnings = [];
+  console.error = (m) => walkWarnings.push(String(m));
+  try {
+    const fullWalk = await radancy.fetch({ name: 'Overcount', careers_url: 'https://x.example/search-jobs' }, walkCtx(3, 4, 20));
+    const fullWarned = walkWarnings.splice(0).join(' ');
+    if (fullWalk.length === 11 && !/truncat/i.test(fullWarned)) pass('radancy: walking every server page is not a truncation even when the server total is higher');
+    else fail(`radancy full walk: returned ${fullWalk.length}, warned "${fullWarned}"`);
+    const brokenWalk = await radancy.fetch({ name: 'Broken', careers_url: 'https://x.example/search-jobs' }, walkCtx(3, 4, 11, 2));
+    const brokenWarned = walkWarnings.splice(0).join(' ');
+    if (brokenWalk.length === 4 && /truncated at 4 of 11/.test(brokenWarned)) pass('radancy: a walk that stops before the last server page still warns truncated');
+    else fail(`radancy broken walk: returned ${brokenWalk.length}, warned "${brokenWarned}"`);
+  } finally {
+    console.error = realConsoleError;
+  }
 } catch (e) {
   fail(`radancy provider tests crashed: ${e.message}`);
 }

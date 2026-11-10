@@ -303,6 +303,9 @@ export default {
           };
           push(firstRows);
 
+          // True only when the walk read the server's last reported page without stopping
+          // early (error, clamp, empty page or max_jobs).
+          let walkedAllPages = totalPages != null && totalPages <= maxPages && lastPage <= 1;
           for (let page = 2; page <= lastPage && jobs.length < maxJobs; page++) {
             await wait(PAGE_DELAY_MS);
             let rows;
@@ -317,6 +320,7 @@ export default {
             }
             if (rows.length === 0) break;
             if (push(rows) === 0) break; // server clamped the page — stop
+            if (page === lastPage && totalPages != null && totalPages <= maxPages) walkedAllPages = true;
           }
 
           // Never truncate silently (AGENTS.md): say what was left behind — and
@@ -327,7 +331,12 @@ export default {
           // pre-slice length would overstate delivery in the one message whose
           // entire job is to be accurate about what the caller did not get.
           const returned = Math.min(jobs.length, maxJobs);
-          if (totalResults && returned < totalResults) {
+          // Some tenants count more results than their pages list (L'Oréal: 1711 counted,
+          // 1689 rows on all 17 pages). When every server page was read and max_jobs did not
+          // cut the list, nothing was left behind; note the gap without calling it a cut.
+          if (walkedAllPages && jobs.length <= maxJobs && totalResults && returned < totalResults) {
+            console.error(`ℹ️  radancy: ${entry.name} listed ${returned} postings on all ${totalPages} pages; the server count says ${totalResults}`);
+          } else if (totalResults && returned < totalResults) {
             console.error(
               `⚠️  radancy: ${entry.name} truncated at ${returned} of ${totalResults} postings`
               + ` — raise max_jobs/max_pages on this entry for more`,

@@ -1,0 +1,97 @@
+{
+ "result": {
+  "data": {
+   "total_count": 3,
+   "items": {
+    "type": "FeatureCollection",
+    "features": [
+     {
+      "geometry": {
+       "coordinates": [
+        "-117.9242123",
+        "33.8703645"
+       ],
+       "type": "Point"
+      },
+      "type": "Feature",
+      "properties": {
+       "zip": "92835-1019",
+       "country": "United States",
+       "last_updated": "07-Nov-2026",
+       "address": "120 e imperial hwy",
+       "city": "Fullerton",
+       "sites": "Retail",
+       "lon": "-117.9242123",
+       "title": "Retail Sales Associate",
+       "type": "Part time",
+       "experience": "Individual Contributor",
+       "sys_id": "1f8f8e273b9093d8d96f8f9a04e45a43",
+       "auto_req_id": "1055582BR",
+       "worker_type": "Occasional-Seasonal (Seasonal)",
+       "state": "California",
+       "category": "Retail Group",
+       "lat": "33.8703645"
+      }
+     },
+     {
+      "geometry": {
+       "coordinates": [
+        "-80.244216",
+        "36.0998596"
+       ],
+       "type": "Point"
+      },
+      "type": "Feature",
+      "properties": {
+       "zip": "27103-6440",
+       "country": "United States",
+       "last_updated": "07-Nov-2026",
+       "address": "1980 griffith rd",
+       "city": "Winston-Salem",
+       "sites": "Retail",
+       "lon": "-80.244216",
+       "title": "Retail Warehouse Associate",
+       "type": "Part time",
+       "experience": "Individual Contributor",
+       "sys_id": "88d1c2eb2bd89f9866afffa95e91bf5e",
+       "auto_req_id": "1055581BR",
+       "worker_type": "Occasional-Seasonal (Seasonal)",
+       "state": "North Carolina",
+       "category": "Retail Group",
+       "lat": "36.0998596"
+      }
+     },
+     {
+      "geometry": {
+       "coordinates": [
+        "-76.0677796",
+        "43.0426887"
+       ],
+       "type": "Point"
+      },
+      "type": "Feature",
+      "properties": {
+       "zip": "13214-1635",
+       "country": "United States",
+       "last_updated": "07-Nov-2026",
+       "address": "3401 erie blvd e",
+       "city": "Dewitt",
+       "sites": "Retail",
+       "lon": "-76.0677796",
+       "title": "Samsung Home Theater Specialist",
+       "type": "Full time",
+       "experience": "Individual Contributor",
+       "sys_id": "d114f9a70f10db1c26ae45d800d1b2dd",
+       "auto_req_id": "1055580BR",
+       "worker_type": "Regular",
+       "state": "New York",
+       "category": "Retail Group",
+       "lat": "43.0426887"
+      }
+     }
+    ]
+   },
+   "show_load_more": false
+  }
+ }
+}

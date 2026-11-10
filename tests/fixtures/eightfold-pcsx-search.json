@@ -1,0 +1,9 @@
+{"status": 200, "error": {"message": "", "body": ""}, "data": {"positions": [
+ {"id": 481079465435, "displayJobId": "260055848", "name": "Advanced Systems Analyst (Nashville, TN)", "locations": ["United States", "Nashville, Tennessee, United States"], "postedTs": 1784048558, "creationTs": 1783987989, "positionUrl": "/careers/job/481079465435"},
+ {"id": 481079465436, "name": "Finance Intern", "locations": ["Seattle, Washington, United States"], "creationTs": 1783987989},
+ {"id": 481079465437, "name": "  ", "locations": ["Remote"], "positionUrl": "/careers/job/481079465437"},
+ {"id": {"bad": true}, "name": "Bad id no url", "locations": "Seattle"},
+ null,
+ {"id": 481079465438, "name": 12345, "positionUrl": "/careers/job/481079465438"},
+ {"id": 481079465439, "name": "Hostile URL", "positionUrl": "//evil.example/careers/job/1", "locations": [7, "Austin, Texas, United States"]}
+], "count": 7}}

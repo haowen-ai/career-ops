@@ -1,0 +1,224 @@
+{
+ "Jobs": {
+  "Job": [
+   {
+    "Questions": [
+     {
+      "QuestionName": "reqid",
+      "Value": "1440057"
+     },
+     {
+      "QuestionName": "hotjob",
+      "Value": "No"
+     },
+     {
+      "QuestionName": "clientid",
+      "Value": "26350"
+     },
+     {
+      "QuestionName": "siteid",
+      "Value": "6930"
+     },
+     {
+      "QuestionName": "gqid",
+      "Value": "3940"
+     },
+     {
+      "QuestionName": "jobreqlanguage",
+      "Value": "1"
+     },
+     {
+      "QuestionName": "latitude",
+      "Value": "0.0"
+     },
+     {
+      "QuestionName": "longitude",
+      "Value": "0.0"
+     },
+     {
+      "QuestionName": "lastupdated",
+      "Value": "07-Nov-2026"
+     },
+     {
+      "QuestionName": "jobtitle",
+      "Value": "Transportation Manager"
+     },
+     {
+      "QuestionName": "location",
+      "Value": "Performance Food Group Customized Distribution California (0155) "
+     },
+     {
+      "QuestionName": "formtext5",
+      "Value": "Shafter, California (CA) "
+     },
+     {
+      "QuestionName": "formtext6",
+      "Value": "PFG Customized "
+     }
+    ],
+    "Link": "https://sjobs.brassring.com/TGnewUI/Search/home/HomeWithPreLoad?partnerid=26350&siteid=6930&PageType=JobDetails&jobid=1440057",
+    "localeId": "1033"
+   },
+   {
+    "Questions": [
+     {
+      "QuestionName": "reqid",
+      "Value": "1434811"
+     },
+     {
+      "QuestionName": "hotjob",
+      "Value": "No"
+     },
+     {
+      "QuestionName": "clientid",
+      "Value": "26350"
+     },
+     {
+      "QuestionName": "siteid",
+      "Value": "6930"
+     },
+     {
+      "QuestionName": "gqid",
+      "Value": "3940"
+     },
+     {
+      "QuestionName": "jobreqlanguage",
+      "Value": "1"
+     },
+     {
+      "QuestionName": "latitude",
+      "Value": "0.0"
+     },
+     {
+      "QuestionName": "longitude",
+      "Value": "0.0"
+     },
+     {
+      "QuestionName": "lastupdated",
+      "Value": "07-Nov-2026"
+     },
+     {
+      "QuestionName": "jobtitle",
+      "Value": "Buyer"
+     },
+     {
+      "QuestionName": "location",
+      "Value": "Vistar-Michigan (1015) "
+     },
+     {
+      "QuestionName": "formtext5",
+      "Value": "Romulus, Michigan (MI) "
+     },
+     {
+      "QuestionName": "formtext6",
+      "Value": "VISTAR"
+     }
+    ],
+    "Link": "https://sjobs.brassring.com/TGnewUI/Search/home/HomeWithPreLoad?partnerid=26350&siteid=6930&PageType=JobDetails&jobid=1434811",
+    "localeId": "1033"
+   },
+   {
+    "Questions": [
+     {
+      "QuestionName": "reqid",
+      "Value": "1441153"
+     },
+     {
+      "QuestionName": "hotjob",
+      "Value": "No"
+     },
+     {
+      "QuestionName": "clientid",
+      "Value": "26350"
+     },
+     {
+      "QuestionName": "siteid",
+      "Value": "6930"
+     },
+     {
+      "QuestionName": "gqid",
+      "Value": "3861"
+     },
+     {
+      "QuestionName": "jobreqlanguage",
+      "Value": "1"
+     },
+     {
+      "QuestionName": "latitude",
+      "Value": "0.0"
+     },
+     {
+      "QuestionName": "longitude",
+      "Value": "0.0"
+     },
+     {
+      "QuestionName": "lastupdated",
+      "Value": "07-Nov-2026"
+     },
+     {
+      "QuestionName": "jobtitle",
+      "Value": "CDL Class A Delivery Driver"
+     },
+     {
+      "QuestionName": "location",
+      "Value": "Performance Alabama (0503) "
+     },
+     {
+      "QuestionName": "formtext5",
+      "Value": "Clanton, Alabama (AL) "
+     },
+     {
+      "QuestionName": "formtext6",
+      "Value": "Performance Foodservice "
+     }
+    ],
+    "Link": "https://sjobs.brassring.com/TGnewUI/Search/home/HomeWithPreLoad?partnerid=26350&siteid=6930&PageType=JobDetails&jobid=1441153",
+    "localeId": "1033"
+   }
+  ]
+ },
+ "Facets": {
+  "Facet": [
+   {
+    "Name": "formtext6",
+    "Description": "Division",
+    "Options": [
+     {
+      "OptionName": "Afflink",
+      "OptionValue": "AFFLNK",
+      "Count": 3,
+      "Selected": false
+     },
+     {
+      "OptionName": "Cheney Brothers & Affiliates",
+      "OptionValue": "CHENEY",
+      "Count": 69,
+      "Selected": false
+     }
+    ]
+   },
+   {
+    "Name": "formtext7",
+    "Description": "Job Category",
+    "Options": [
+     {
+      "OptionName": "Administration",
+      "OptionValue": "ADM",
+      "Count": 2,
+      "Selected": false
+     },
+     {
+      "OptionName": "Executive",
+      "OptionValue": "EXE",
+      "Count": 2,
+      "Selected": false
+     }
+    ]
+   }
+  ]
+ },
+ "JobsType": null,
+ "JobsCount": 3,
+ "FiltersCount": 0,
+ "PageSize": 0
+}

@@ -208,7 +208,7 @@ try {
     fail(`jibeapply fetch max_pages override: requests=${overriddenRequests}, total=${fetchedOverridden.length} (expected 80/800)`);
   }
 
-  // entry.max_pages is itself capped (MAX_PAGES_CAP = 500) — an absurd override
+  // entry.max_pages is itself capped (MAX_PAGES_CAP = 5000) — an absurd override
   // can't turn this into an unbounded scan either
   let cappedOverrideRequests = 0;
   const absurdEntry = { name: 'AbsurdCo', careers_url: 'https://absurdco.jibeapply.com/jobs', max_pages: 100_000 };
@@ -220,10 +220,29 @@ try {
       return { totalCount: 10_000_000, count: 10, jobs: Array.from({ length: 10 }, (_, i) => ({ title: `Job ${i}`, slug: `job-${i}` })) };
     },
   });
-  if (cappedOverrideRequests === 500 && fetchedAbsurd.length === 5000) {
+  if (cappedOverrideRequests === 5000 && fetchedAbsurd.length === 50000) {
     pass('jibeapply.fetch() caps an absurd entry.max_pages at MAX_PAGES_CAP');
   } else {
-    fail(`jibeapply fetch max_pages hard cap: requests=${cappedOverrideRequests}, total=${fetchedAbsurd.length} (expected 500/5000)`);
+    fail(`jibeapply fetch max_pages hard cap: requests=${cappedOverrideRequests}, total=${fetchedAbsurd.length} (expected 5000/50000)`);
+  }
+
+  // A large real tenant (Costco: ~20,766 postings, ~2,077 pages) can be read whole
+  // with max_pages above the old 500-page ceiling.
+  let largeRequests = 0;
+  const fetchedLarge = await jibeapply.fetch({ name: 'LargeCo', careers_url: 'https://largeco.jibeapply.com/jobs', max_pages: 3000 }, {
+    transport: 'http',
+    fetchText: async () => { throw new Error('fetchText not expected'); },
+    fetchJson: async (url) => {
+      largeRequests++;
+      const page = Number(new URL(url).searchParams.get('page') || 1);
+      const n = page === 2077 ? 6 : 10;
+      return { totalCount: 20_766, count: 10, jobs: Array.from({ length: n }, (_, i) => ({ title: `Job ${page}-${i}`, slug: `job-${page}-${i}` })) };
+    },
+  });
+  if (largeRequests === 2077 && fetchedLarge.length === 20_766) {
+    pass('jibeapply.fetch() reads a 20,766-posting tenant whole with max_pages: 3000');
+  } else {
+    fail(`jibeapply large tenant: requests=${largeRequests}, total=${fetchedLarge.length} (expected 2077/20766)`);
   }
 
   // fetch() pagination — a failure on a later page returns the jobs gathered

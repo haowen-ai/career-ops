@@ -48,7 +48,7 @@ export function buildPostFilter(cfg) {
  * @param {any} json - A single API response page.
  * @returns {Array<{title: string, url: string, company: string, location: string}>}
  */
-export function parseIbmResponse(json) {
+export function parseIbmResponse(json, company = 'IBM') {
   const hits = json && json.hits && Array.isArray(json.hits.hits) ? json.hits.hits : null;
   if (!hits) {
     throw new Error(`ibm: unexpected API response — expected hits.hits[], got keys: [${json ? Object.keys(json).join(', ') : 'null'}]`);
@@ -64,7 +64,7 @@ export function parseIbmResponse(json) {
     out.push({
       title: s.title.trim(),
       url: s.url.trim(),
-      company: 'IBM',
+      company,
       location: [loc, mode].filter(Boolean).join(' · '),
     });
   }
@@ -82,7 +82,13 @@ export default {
    * @returns {Promise<Array<{title: string, url: string, company: string, location: string}>>}
    */
   async fetch(entry, ctx) {
-    const postFilter = buildPostFilter(entry.ibm || {});
+    const cfg = entry.ibm || {};
+    const postFilter = buildPostFilter(cfg);
+    // Optional `title_query` (title-only search) and `company` label, for a brand IBM
+    // acquired that now lists on IBM careers (e.g. Confluent: title_query "confluent").
+    const titleQuery = typeof cfg.title_query === 'string' ? cfg.title_query.trim() : '';
+    const company = typeof cfg.company === 'string' && cfg.company.trim() ? cfg.company.trim() : 'IBM';
+    const must = titleQuery ? [{ simple_query_string: { query: titleQuery, fields: ['title'] } }] : [];
     /** @type {Array<{title: string, url: string, company: string, location: string}>} */
     const out = [];
 
@@ -90,7 +96,7 @@ export default {
       const body = {
         appId: 'careers',
         scopes: ['careers2'],
-        query: { bool: { must: [] } },
+        query: { bool: { must } },
         post_filter: postFilter,
         size: PAGE_SIZE,
         from,
@@ -111,7 +117,7 @@ export default {
         redirect: 'error',
       });
 
-      out.push(...parseIbmResponse(json));
+      out.push(...parseIbmResponse(json, company));
 
       // Stop on the first short page. IBM's `total` is unreliable (often
       // capped at the page size), so don't trust it for the loop bound —

@@ -450,6 +450,23 @@ try {
     }
   }
 
+  // Entry `max_pages` replaces the 50-page default; ctx.maxPages (a probe) still wins.
+  {
+    const bigCtx = (total, extra = {}) => ({
+      transport: 'http', ...extra,
+      fetchText: async () => { throw new Error('unused'); },
+      fetchJson: async (url) => {
+        const offset = parseInt(new URL(url).searchParams.get('offset') || '0', 10);
+        return { content: Array.from({ length: Math.max(0, Math.min(100, total - offset)) }, (_, i) => ({ id: `B-${offset + i}`, name: `Role ${offset + i}` })) };
+      },
+    });
+    const capped = await sr.fetch({ name: 'BigSr', careers_url: 'https://careers.smartrecruiters.com/bigsr' }, bigCtx(7300));
+    const raised = await sr.fetch({ name: 'BigSr', careers_url: 'https://careers.smartrecruiters.com/bigsr', max_pages: 200 }, bigCtx(7300));
+    const probe = await sr.fetch({ name: 'BigSr', careers_url: 'https://careers.smartrecruiters.com/bigsr', max_pages: 200 }, bigCtx(7300, { maxPages: 1 }));
+    if (capped.length === 5000 && raised.length === 7300 && probe.length === 100) pass('smartrecruiters: default stops at 5000; entry max_pages:200 reads all 7300; a probe still reads one page');
+    else fail(`smartrecruiters max_pages raise: default ${capped.length}, raised ${raised.length}, probe ${probe.length}`);
+  }
+
 } catch (e) {
   fail(`smartrecruiters provider tests crashed: ${e.message}`);
 }

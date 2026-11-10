@@ -1,0 +1,296 @@
+{
+ "requisitionList": [
+  {
+   "hotJob": false,
+   "addedToJobCart": false,
+   "draft": false,
+   "alreadyAppliedOn": false,
+   "toReApply": false,
+   "jobId": "3141015",
+   "contestNo": "SCO006490",
+   "column": [
+    "Director of Finance - Hyatt: Andaz Scottsdale",
+    "Andaz Scottsdale",
+    "Accounting/Finance/Tax",
+    "[\"US-AZ-Scottsdale\"]",
+    "Nov 6, 2026"
+   ],
+   "linkedColumn": 0,
+   "locationsColumns": [
+    3
+   ]
+  },
+  {
+   "hotJob": false,
+   "addedToJobCart": false,
+   "draft": false,
+   "alreadyAppliedOn": false,
+   "toReApply": false,
+   "jobId": "3141509",
+   "contestNo": "HON006950",
+   "column": [
+    "Assistant Operations Manager - Front Office",
+    "Hyatt Regency Waikiki Beach Resort and Spa",
+    "Hotel Operations",
+    "[\"US-HI-Honolulu\"]",
+    "Nov 6, 2026"
+   ],
+   "linkedColumn": 0,
+   "locationsColumns": [
+    3
+   ]
+  },
+  {
+   "hotJob": false,
+   "addedToJobCart": false,
+   "draft": false,
+   "alreadyAppliedOn": false,
+   "toReApply": false,
+   "jobId": "3139771",
+   "contestNo": "SAI002048",
+   "column": [
+    "Chef de Partie",
+    "Park Hyatt St. Kitts",
+    "Culinary",
+    "[\"Caribbean Islands-Saint Kitts\"]",
+    "Nov 6, 2026"
+   ],
+   "linkedColumn": 0,
+   "locationsColumns": [
+    3
+   ]
+  }
+ ],
+ "facetResults": [
+  {
+   "id": "ORGANIZATION",
+   "facetValueResults": [
+    {
+     "id": "464260210089",
+     "text": "Miraval Austin Resort and Spa",
+     "quantity": "36",
+     "level": 2
+    },
+    {
+     "id": "656160210089",
+     "text": "Hyatt Regency Salt Lake City",
+     "quantity": "35",
+     "level": 2
+    },
+    {
+     "id": "490160210089",
+     "text": "Hyatt Corporate Office",
+     "quantity": "34",
+     "level": 2
+    },
+    {
+     "id": "569560210089",
+     "text": "Wild Dunes Resort",
+     "quantity": "27",
+     "level": 2
+    }
+   ],
+   "levelList": [
+    {
+     "level": 2,
+     "name": "Property/Office"
+    },
+    {
+     "level": 3,
+     "name": "Location 2"
+    },
+    {
+     "level": 4,
+     "name": "Divestiture Main Folder"
+    },
+    {
+     "level": 5,
+     "name": "Divestiture Hotel Name"
+    }
+   ]
+  },
+  {
+   "id": "POSTING_DATE",
+   "facetValueResults": [
+    {
+     "id": "1",
+     "text": "Today",
+     "quantity": ""
+    },
+    {
+     "id": "2",
+     "text": "Yesterday",
+     "quantity": ""
+    },
+    {
+     "id": "3",
+     "text": "Last 7 Days",
+     "quantity": ""
+    },
+    {
+     "id": "4",
+     "text": "Last 14 Days",
+     "quantity": ""
+    }
+   ]
+  },
+  {
+   "id": "LOCATION",
+   "facetValueResults": [
+    {
+     "id": "1223",
+     "text": "United States",
+     "quantity": "659",
+     "level": 1
+    },
+    {
+     "id": "3120",
+     "text": "Texas",
+     "quantity": "119",
+     "level": 2
+    },
+    {
+     "id": "3079",
+     "text": "California",
+     "quantity": "79",
+     "level": 2
+    },
+    {
+     "id": "3078",
+     "text": "Arizona",
+     "quantity": "71",
+     "level": 2
+    }
+   ],
+   "levelList": [
+    {
+     "level": 1,
+     "name": "Country"
+    },
+    {
+     "level": 2,
+     "name": "State/Province/Region"
+    },
+    {
+     "level": 3,
+     "name": "City"
+    }
+   ]
+  },
+  {
+   "id": "JOB_FIELD",
+   "facetValueResults": [
+    {
+     "id": "200000223",
+     "text": "Food and Beverage",
+     "quantity": "183",
+     "level": 1
+    },
+    {
+     "id": "200000222",
+     "text": "Culinary",
+     "quantity": "98",
+     "level": 1
+    },
+    {
+     "id": "200000240",
+     "text": "Guest Service Operations",
+     "quantity": "81",
+     "level": 1
+    },
+    {
+     "id": "200000281",
+     "text": "Housekeeping/Laundry",
+     "quantity": "67",
+     "level": 1
+    }
+   ],
+   "levelList": [
+    {
+     "level": 1,
+     "name": "Category"
+    },
+    {
+     "level": 2,
+     "name": "Function"
+    },
+    {
+     "level": 3,
+     "name": "Specialty"
+    }
+   ]
+  },
+  {
+   "id": "JOB_SCHEDULE",
+   "facetValueResults": [
+    {
+     "id": "1",
+     "text": "Full-time",
+     "quantity": "540"
+    },
+    {
+     "id": "2",
+     "text": "Part-time",
+     "quantity": "82"
+    },
+    {
+     "id": "3",
+     "text": "On-call/Casual",
+     "quantity": "51"
+    },
+    {
+     "id": "4",
+     "text": "Seasonal",
+     "quantity": "29"
+    }
+   ]
+  },
+  {
+   "id": "JOB_LEVEL",
+   "facetValueResults": [
+    {
+     "id": "1",
+     "text": "Hourly/Entry Level Employee",
+     "quantity": "447"
+    },
+    {
+     "id": "3",
+     "text": "Entry Level Manager",
+     "quantity": "86"
+    },
+    {
+     "id": "4",
+     "text": "Department Head/Manager",
+     "quantity": "85"
+    },
+    {
+     "id": "8",
+     "text": "Professional Staff/Corporate",
+     "quantity": "35"
+    }
+   ]
+  },
+  {
+   "id": "JOB_LOCALE",
+   "facetValueResults": [
+    {
+     "id": "en",
+     "text": "English (702)",
+     "quantity": "702"
+    },
+    {
+     "id": "es",
+     "text": "Spanish (147)",
+     "quantity": "147"
+    }
+   ]
+  }
+ ],
+ "pagingData": {
+  "currentPageNo": 1,
+  "pageSize": 25,
+  "totalCount": 3
+ },
+ "queryString": "f=null&s=3|D&a=null&multiline=false",
+ "careerSectionUnAvailable": false
+}

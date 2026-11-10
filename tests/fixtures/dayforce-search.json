@@ -1,0 +1,124 @@
+{
+ "jobPostings": [
+  {
+   "clientNamespace": "ibgllc",
+   "jobBoardId": 1,
+   "jobPostingId": 2832,
+   "jobReqId": 845,
+   "jobTitle": "Sr Engineer, IAM",
+   "jobDescription": "About the role &ndash;\nAs a Senior IAM Engineer, you will be a key member of the",
+   "hasVirtualLocation": false,
+   "postingStartTimestampUTC": "2026-11-06T11:00:00+00:00",
+   "postingExpiryTimestampUTC": null,
+   "isEvergreen": false,
+   "reapplyPeriodDays": null,
+   "postingLocations": [
+    {
+     "formattedAddress": "Greenwich, CT, USA",
+     "locationId": 2,
+     "locationType": 2,
+     "isoCountryCode": "US",
+     "stateCode": "CT",
+     "cityName": "Greenwich",
+     "coordinates": "lat:41.0262417;lng:-73.62819639999999"
+    },
+    {
+     "formattedAddress": "Chicago, IL, USA",
+     "locationId": 4,
+     "locationType": 2,
+     "isoCountryCode": "US",
+     "stateCode": "IL",
+     "cityName": "Chicago",
+     "coordinates": "lat:41.88325;lng:-87.6323879"
+    },
+    {
+     "formattedAddress": "New York, NY, USA",
+     "locationId": 11,
+     "locationType": 2,
+     "isoCountryCode": "US",
+     "stateCode": "NY",
+     "cityName": "New York",
+     "coordinates": "lat:40.7127753;lng:-74.0059728"
+    },
+    {
+     "formattedAddress": "Fort Lauderdale, FL, USA",
+     "locationId": 12,
+     "locationType": 2,
+     "isoCountryCode": "US",
+     "stateCode": "FL",
+     "cityName": "Fort Lauderdale",
+     "coordinates": "lat:26.1224386;lng:-80.13731740000001"
+    }
+   ],
+   "postingAppliedStatus": {
+    "jobPostingId": 2832,
+    "hasApplied": false,
+    "canApplyAgain": true
+   },
+   "searchScore": 0
+  },
+  {
+   "clientNamespace": "ibgllc",
+   "jobBoardId": 1,
+   "jobPostingId": 2784,
+   "jobReqId": 873,
+   "jobTitle": "Client Services Specialist – Security Transfers",
+   "jobDescription": "About the Company\n&nbsp;\nInteractive Brokers Group, Inc. (NASDAQ: IBKR), a membe",
+   "hasVirtualLocation": false,
+   "postingStartTimestampUTC": "2026-11-05T05:00:00+00:00",
+   "postingExpiryTimestampUTC": null,
+   "isEvergreen": false,
+   "reapplyPeriodDays": null,
+   "postingLocations": [
+    {
+     "formattedAddress": "Zug, Switzerland",
+     "locationId": 22,
+     "locationType": 2,
+     "isoCountryCode": "CH",
+     "stateCode": "ZG",
+     "cityName": "Zug",
+     "coordinates": "lat:47.1661672;lng:8.5154946"
+    }
+   ],
+   "postingAppliedStatus": {
+    "jobPostingId": 2784,
+    "hasApplied": false,
+    "canApplyAgain": true
+   },
+   "searchScore": 0
+  },
+  {
+   "clientNamespace": "ibgllc",
+   "jobBoardId": 1,
+   "jobPostingId": 2756,
+   "jobReqId": 870,
+   "jobTitle": "Risk Assessment Analyst I",
+   "jobDescription": "This is Hybrid role (4 days in office /1 day remote)\nAbout Your Team:\nThe Bad Ac",
+   "hasVirtualLocation": false,
+   "postingStartTimestampUTC": "2026-11-02T11:00:00+00:00",
+   "postingExpiryTimestampUTC": null,
+   "isEvergreen": false,
+   "reapplyPeriodDays": null,
+   "postingLocations": [
+    {
+     "formattedAddress": "Chicago, IL, USA",
+     "locationId": 4,
+     "locationType": 2,
+     "isoCountryCode": "US",
+     "stateCode": "IL",
+     "cityName": "Chicago",
+     "coordinates": "lat:41.88325;lng:-87.6323879"
+    }
+   ],
+   "postingAppliedStatus": {
+    "jobPostingId": 2756,
+    "hasApplied": false,
+    "canApplyAgain": true
+   },
+   "searchScore": 0
+  }
+ ],
+ "maxCount": 3,
+ "offset": 0,
+ "count": 3
+}

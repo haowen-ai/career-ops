@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<?xml-stylesheet type="text/xsl" href="https://phg.tbe.taleo.net/phg01/ats/rss/taleorssfeed.xsl" ?>
+<?xml-stylesheet type="text/css" href="https://phg.tbe.taleo.net/phg01/ats/rss/taleorssfeed.css" ?>
+<rss xmlns:taleo="urn:TBERss" version="2.0">
+<channel>
+<title>NVR Inc Job Feed</title>
+<link>https://phg.tbe.taleo.net/dispatcher/servlet/DispatcherServlet?org=NVRINC&amp;act=redirectCws&amp;cws=52</link>
+<language>en_US</language>
+<pubDate>11/6/26 8:42 PM</pubDate>
+<ttl>60</ttl>
+<item>
+<title>Mortgage Underwriting Manager</title>
+<link>https://phg.tbe.taleo.net/phg01/ats/careers/requisition.jsp?org=NVRINC&amp;cws=52&amp;rid=38172</link>
+<description>Trimmed &amp; shortened.</description>
+<pubDate>Fri, 06 Nov 2026 20:42:10 GMT</pubDate>
+<taleo:reqId>38172</taleo:reqId>
+<taleo:location>VA - Reston</taleo:location>
+<taleo:locationState>VA</taleo:locationState>
+<taleo:locationCity>Reston</taleo:locationCity>
+<taleo:department>764-Underwriting</taleo:department>
+
+</item>
+<item>
+<title>Construction Management Intern</title>
+<link>https://phg.tbe.taleo.net/phg01/ats/careers/requisition.jsp?org=NVRINC&amp;cws=52&amp;rid=37913</link>
+<description>Trimmed &amp; shortened.</description>
+<pubDate>Fri, 06 Nov 2026 18:54:08 GMT</pubDate>
+<taleo:reqId>37913</taleo:reqId>
+<taleo:location>DE - Rehoboth Beach</taleo:location>
+<taleo:locationState>DE</taleo:locationState>
+<taleo:locationCity>Rehoboth</taleo:locationCity>
+<taleo:department>DES-Delaware South</taleo:department>
+
+</item>
+<item><title></title><taleo:reqId>1</taleo:reqId></item>
+<item><title>No Id</title><link>https://evil.example/x</link></item>
+<item><title>Link Only &amp; Rid</title><link>https://phg.tbe.taleo.net/phg01/ats/careers/requisition.jsp?org=NVRINC&amp;cws=52&amp;rid=40001</link></item>
+</channel>
+</rss>

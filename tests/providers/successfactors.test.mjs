@@ -314,6 +314,77 @@ try {
       fail(`successfactors fetch() empty-RMK CSB-probe wrong: ${probeErr ? `threw "${probeErr.message}"` : JSON.stringify(probeJobs)} after ${probeCalls} jobs-API calls`);
     }
   }
+  // Entry `max_jobs` raises (or lowers) the 1000-posting cap on both strategies,
+  // and the page safety caps scale with it; no option keeps today's 1000.
+  {
+    const tilePage = (startrow) => Array.from({ length: 25 }, (_, i) => {
+      const id = 100000 + startrow + i;
+      return `<li class="job-tile job-id-${id}" data-url="/job/Role-${id}/${id}/"><a class="jobTitle-link" href="/x">Role ${id}</a></li>`;
+    }).join('');
+    const rmkCtx = () => ({
+      sleep: async () => {},
+      fetchText: async (url) => tilePage(Number(new URL(url).searchParams.get('startrow') || 0)),
+      fetchJson: async () => { throw new Error('unused'); },
+    });
+    const rmkDefault = await sf.fetch({ name: 'BigRmk', careers_url: 'https://jobs.bigrmk.example' }, rmkCtx());
+    const rmkRaised = await sf.fetch({ name: 'BigRmk', careers_url: 'https://jobs.bigrmk.example', max_jobs: 3000 }, rmkCtx());
+    if (rmkDefault.length === 1000 && rmkRaised.length === 3000) pass('successfactors RMK: default cap 1000, entry max_jobs:3000 reads 3000');
+    else fail(`successfactors RMK max_jobs: default ${rmkDefault.length}, raised ${rmkRaised.length}`);
+
+    const csbCtx = (total) => ({
+      sleep: async () => {},
+      fetchText: async () => '<a href="/search/?locale=en_US">EN</a>',
+      fetchJson: async (url, opts) => {
+        const { pageNumber } = JSON.parse(opts.body);
+        const rows = Array.from({ length: 10 }, (_, i) => pageNumber * 10 + i).filter((n) => n < total)
+          .map((n) => ({ response: { id: String(n), unifiedStandardTitle: `Role ${n}`, urlTitle: `Role-${n}`, supportedLocales: ['en_US'] } }));
+        return { totalJobs: total, jobSearchResult: rows };
+      },
+    });
+    const csbDefault = await sf.fetch({ name: 'BigCsb', careers_url: 'https://careers.bigcsb.example', sfVariant: 'csb' }, csbCtx(2500));
+    const csbRaised = await sf.fetch({ name: 'BigCsb', careers_url: 'https://careers.bigcsb.example', sfVariant: 'csb', max_jobs: 5000 }, csbCtx(2500));
+    const csbProbe = await sf.fetch({ name: 'BigCsb', careers_url: 'https://careers.bigcsb.example', sfVariant: 'csb', max_jobs: 5000, max_pages: 1 }, csbCtx(2500));
+    if (csbDefault.length === 1000 && csbRaised.length === 2500 && csbProbe.length === 10) pass('successfactors CSB: default cap 1000, max_jobs:5000 reads all 2500, max_pages still lowers');
+    else fail(`successfactors CSB max_jobs: default ${csbDefault.length}, raised ${csbRaised.length}, probe ${csbProbe.length}`);
+  }
+  // 2026-11-08: a search filter on careers_url (SAP's old RMK site
+  // careers.sap.com/search/?q=intern&locationsearch=United+States) must reach
+  // every tile request; startrow stays owned by the loop; no-query URLs keep
+  // the old request URL byte-for-byte.
+  {
+    const { tileUrl } = successfactorsModule;
+    const sap = resolveConfig({ name: 'SAP', careers_url: 'https://careers.sap.com/search/?q=intern&locationsearch=United+States&startrow=50' });
+    const plain = resolveConfig({ name: 'ZF', careers_url: 'https://jobs.zf.com' });
+    if (
+      sap.tileApi === 'https://careers.sap.com/tile-search-results/' &&
+      tileUrl(sap, 25) === 'https://careers.sap.com/tile-search-results/?q=intern&locationsearch=United+States&startrow=25' &&
+      sap.keywords === 'intern' && sap.location === 'United States' &&
+      tileUrl(plain, 0) === 'https://jobs.zf.com/tile-search-results/?startrow=0' && plain.searchQuery === ''
+    ) pass('successfactors: careers_url search filter is carried into tile requests (startrow dropped), plain URLs unchanged');
+    else fail(`successfactors search filter wrong: ${tileUrl(sap, 25)} / ${tileUrl(plain, 0)}`);
+
+    const seenUrls = [];
+    const tile = (id, title) => `<li class="job-tile job-id-${id}" data-url="/job/Alpharetta-${title.replace(/ /g, '-')}-GA-30009/${id}/"><a class="jobTitle-link" href="#">${title}</a></li>`;
+    const pages = [tile(1, 'SAP iXp Intern A') + tile(2, 'SAP iXp Intern B'), ''];
+    let i = 0;
+    const jobs = await sf.fetch({ name: 'SAP', careers_url: 'https://careers.sap.com/search/?q=intern&locationsearch=United+States' }, {
+      sleep: async () => {},
+      fetchText: async (url, opts) => { seenUrls.push([url, opts.redirect]); return pages[i++] ?? ''; },
+      fetchJson: async () => { throw new Error('CSB must not run when RMK returned rows'); },
+    });
+    const allFiltered = seenUrls.every(([u, r]) => new URL(u).searchParams.get('q') === 'intern' && new URL(u).searchParams.get('locationsearch') === 'United States' && r === 'error');
+    if (jobs.length === 2 && allFiltered && jobs[0].url === 'https://careers.sap.com/job/Alpharetta-SAP-iXp-Intern-A-GA-30009/1/') pass('successfactors.fetch: filtered RMK board reads every page with the filter and redirect:error');
+    else fail(`successfactors filtered fetch wrong: ${jobs.length} jobs, urls ${JSON.stringify(seenUrls)}`);
+
+    let csbBody = null;
+    await sf.fetch({ name: 'SAP', careers_url: 'https://careers.sap.com/search/?q=intern&locationsearch=United+States', sfVariant: 'csb' }, {
+      sleep: async () => {},
+      fetchText: async () => '',
+      fetchJson: async (url, opts) => { csbBody ??= JSON.parse(opts.body); return { totalJobs: 0, jobSearchResult: [] }; },
+    });
+    if (csbBody && csbBody.keywords === 'intern' && csbBody.location === 'United States') pass('successfactors CSB: careers_url q/locationsearch map to keywords/location');
+    else fail(`successfactors CSB filter body wrong: ${JSON.stringify(csbBody)}`);
+  }
 } catch (err) {
   fail(`successfactors provider test threw: ${err.message}`);
 }
