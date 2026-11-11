@@ -40,7 +40,19 @@ const DEFAULT_MAX_JOBS = 5000;
 const INTER_PAGE_DELAY_MS = 200;
 const FORWARD_KEYS = /^(keywords|category_id|subdivision_code|country_code|custom_fields\[[^\]]+\](\[\d*\])?)$/;
 // Only career sites verified to run on this CMS; add a host after checking it live.
-export const ALLOWED_HOSTS = new Set(['careers.lennar.com']);
+//
+// A second search-page template ("autojob" DataTables, verified live
+// 2026-11-11 on www.seeacareerwithus.com — IKEA US, linked from
+// ikea.com/us/en/this-is-ikea/work-with-us/) has no /api/requisitions route
+// (404). Its search page loads the whole list in one JSON call instead:
+//   GET {origin}/api/jobs?empty=empty
+//   → {"recordsTotal":125,"recordsFiltered":125,"data":[{job_id,name,location,
+//      city,state,country,posted_at,active,…}],"args":{"limit":null,…}}
+// and links each row to {origin}/details/{job_id}/{name with [^a-z0-9] → "-"}.
+// Hosts on that template are listed in JOBS_FEED_HOSTS (and must also be in
+// ALLOWED_HOSTS).
+export const JOBS_FEED_HOSTS = new Set(['www.seeacareerwithus.com']);
+export const ALLOWED_HOSTS = new Set(['careers.lennar.com', ...JOBS_FEED_HOSTS]);
 
 /**
  * @param {any} entry
@@ -59,7 +71,52 @@ export function resolveConfig(entry) {
   const forward = [];
   for (const [k, v] of u.searchParams) if (FORWARD_KEYS.test(k)) forward.push([k, v]);
   const lang = typeof entry?.lang === 'string' && /^[a-z]{2}(-[a-z]{2})?$/i.test(entry.lang) ? entry.lang : 'en';
-  return { origin: u.origin, host, lang, forward };
+  const feed = JOBS_FEED_HOSTS.has(host);
+  return { origin: u.origin, host, lang, forward, feed };
+}
+
+/** @param {ReturnType<typeof resolveConfig>} cfg */
+export function buildFeedUrl(cfg) {
+  return `${cfg.origin}/api/jobs?empty=empty`;
+}
+
+/**
+ * Parse the "autojob" /api/jobs feed (see JOBS_FEED_HOSTS).
+ * - not an object with a `data` array → throw (not the endpoint we expect)
+ * - recordsTotal > 0 but no usable rows → throw (shape changed)
+ * Rows need a numeric job_id and a name; active === 0 rows are skipped.
+ * @param {unknown} body @param {ReturnType<typeof resolveConfig>} cfg
+ */
+export function parseFeed(body, cfg) {
+  let data = body;
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch { throw new Error(`msts: jobs feed is not JSON (${data.length} bytes)`); }
+  }
+  if (!data || typeof data !== 'object' || !Array.isArray(data.data)) {
+    throw new Error('msts: unexpected jobs feed response (no data array)');
+  }
+  const total = Number.isInteger(data.recordsTotal) ? data.recordsTotal : null;
+  const rows = [];
+  const seen = new Set();
+  for (const r of data.data) {
+    if (!r || typeof r !== 'object') continue;
+    const id = String(r.job_id ?? '').trim();
+    const name = typeof r.name === 'string' ? r.name : '';
+    const title = clean(name);
+    if (!/^\d+$/.test(id) || !title || seen.has(id)) continue;
+    if (r.active === 0 || r.active === false) continue;
+    seen.add(id);
+    const url = `${cfg.origin}/details/${id}/${name.replace(/[^a-z0-9]/gi, '-')}`;
+    const location = clean(String(r.location || [r.city, r.state].filter(Boolean).join(', ') || ''));
+    const row = { id, title, url, location };
+    const t = typeof r.posted_at === 'string' ? Date.parse(r.posted_at) : NaN;
+    if (Number.isFinite(t)) row.postedAt = t;
+    rows.push(row);
+  }
+  if (rows.length === 0 && (total ?? data.data.length) > 0) {
+    throw new Error(`msts: jobs feed reports ${total ?? data.data.length} jobs but no job rows parsed (shape changed?)`);
+  }
+  return { rows, total };
 }
 
 /** @param {ReturnType<typeof resolveConfig>} cfg @param {number} page */
@@ -162,6 +219,23 @@ export default {
     const maxPages = resolveMaxPages(entry);
     const pagesToFetch = Math.min(maxPages, probing ? ctxMaxPages : Infinity);
     const maxJobs = resolveMaxJobs(entry);
+
+    if (cfg.feed) {
+      const body = await fetchTextWithRetry(ctx, buildFeedUrl(cfg), { redirect: 'error', headers: { accept: 'application/json', 'x-requested-with': 'XMLHttpRequest' } });
+      const { rows, total } = parseFeed(body, cfg);
+      const out = rows.slice(0, maxJobs).map((row) => {
+        const job = { title: row.title, url: row.url, company: entry.name, location: row.location };
+        if (typeof row.postedAt === 'number') job.postedAt = row.postedAt;
+        return job;
+      });
+      if (total !== null && out.length < total) {
+        console.error(`⚠️  msts: ${entry.name} jobs feed gave ${out.length} of ${total} postings${rows.length > maxJobs ? ' (max_jobs)' : ''}`);
+      }
+      // The caller reads `truncated` to report the board as incomplete: max_jobs cut
+      // valid rows, or the feed returned fewer usable rows than it says it has.
+      if (rows.length > maxJobs || (total !== null && out.length < total)) out.truncated = true;
+      return out;
+    }
 
     const jobs = [];
     const seen = new Set();

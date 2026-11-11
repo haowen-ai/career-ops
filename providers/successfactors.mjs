@@ -89,9 +89,25 @@ export function resolveConfig(entry) {
   // slash, so all of those collapse to the same brand-scoped base instead of
   // doubling the endpoint segment onto itself. Single-domain tenants (the
   // common case) have an empty pathname, so base === origin unchanged.
-  const path = u.pathname
+  let path = u.pathname
     .replace(/\/(?:search|tile-search-results|services\/recruiting\/v1\/jobs)\/?$/i, '')
     .replace(/\/+$/, '');
+  // A tenant category page (/go/<Name>/<id>/, e.g. careers.underarmour.com/
+  // go/Internships/9635400/) is the site's own job filter: its jobs come from
+  // /tile-search-results/category/<id>/ (the apiEndpoint the page itself
+  // passes to j2w.SearchResults.init). The brand prefix before /go/ is kept.
+  let category = null;
+  const catM = path.match(/^(.*)\/go\/([^/]+)\/(\d+)$/);
+  if (catM) {
+    path = catM[1];
+    let name = catM[2];
+    try {
+      name = decodeURIComponent(name);
+    } catch {
+      // keep the raw slug
+    }
+    category = { id: catM[3], name: name.replace(/-+/g, ' ').trim(), page: `${u.origin}${u.pathname}` };
+  }
   const base = u.origin + path;
   // A search filter on careers_url (e.g. careers.sap.com/search/?q=intern&
   // locationsearch=United+States) is carried into every tile request, so a
@@ -107,7 +123,8 @@ export function resolveConfig(entry) {
     searchQuery,
     keywords: sp.get('q') || '',
     location: sp.get('locationsearch') || '',
-    tileApi: `${base}/tile-search-results/`,
+    tileApi: category ? `${base}/tile-search-results/category/${category.id}/` : `${base}/tile-search-results/`,
+    category,
     // jobBase stays origin-only: RMK tile data-url paths for a brand-scoped
     // tenant already carry the brand segment (confirmed against Nemetschek's
     // /Bluebeam/tile-search-results/ output), so prefixing base here would
@@ -337,14 +354,18 @@ async function fetchCsb(entry, cfg, ctx, opts = {}) {
 // The CSB crawl itself. Returns the jobs plus their ids (for cross-term dedup
 // in keyword mode) and whether a page/job cap stopped it early.
 /** @param {import('./_types.js').PortalEntry} entry @param {any} cfg @param {import('./_types.js').Context} ctx @param {{probe?: boolean}} [opts] */
-async function csbCrawl(entry, cfg, ctx, { probe = false } = {}) {
+async function csbCrawl(entry, cfg, ctx, { probe = false, locales: given = null } = {}) {
   let locales = CSB_DEFAULT_LOCALES;
-  try {
-    const html = await ctx.fetchText(cfg.searchPage, { redirect: 'error', headers: { accept: 'text/html' } });
-    const discovered = extractLocales(html);
-    if (discovered.length) locales = discovered;
-  } catch {
-    // Discovery is best-effort; fall back to the default locale set.
+  if (Array.isArray(given) && given.length) {
+    locales = given; // already discovered by the caller (keyword / facet mode)
+  } else {
+    try {
+      const html = await ctx.fetchText(cfg.searchPage, { redirect: 'error', headers: { accept: 'text/html' } });
+      const discovered = extractLocales(html);
+      if (discovered.length) locales = discovered;
+    } catch {
+      // Discovery is best-effort; fall back to the default locale set.
+    }
   }
 
   const maxPages = Math.min(resolveCsbMaxPages(entry), probePageCap(ctx));
@@ -372,7 +393,11 @@ async function csbCrawl(entry, cfg, ctx, { probe = false } = {}) {
           method: 'POST',
           redirect: 'error',
           headers: { 'content-type': 'application/json', accept: 'application/json' },
-          body: JSON.stringify({ keywords: cfg.keywords || '', locale, location: cfg.location || '', pageNumber: page, sortBy: 'recent' }),
+          body: JSON.stringify({
+            keywords: cfg.keywords || '', locale, location: cfg.location || '', pageNumber: page, sortBy: 'recent',
+            // The site's own filter (CSB student facet): {field: [values]}, values ORed.
+            ...(cfg.facetFilters ? { facetFilters: cfg.facetFilters } : {}),
+          }),
         });
       } catch (err) {
         firstErr ??= err;
@@ -420,6 +445,89 @@ export function tileUrl(cfg, startrow) {
   return `${cfg.tileApi}?${q}startrow=${startrow}`;
 }
 
+// ── CSB student facet (2026-11-11) ───────────────────────────────────────────
+// CSB search pages list their filter fields in the page script:
+//   var facetFields = []; facetFields.push({ fieldId:"department", label:"Career Area" }) …
+//   resultStyles.searchFacet.facetFields = facetFields;
+// and the site's React search widget (rmk-jobs-search getFacets) reads the
+// values from the same jobs API with
+//   {facetingOnly:true, locale, keywords, location, facetFields:[…], facetFilters:{}}
+//   → {totalJobs, facetFields:[{name, values:[{name, count}]}]}
+// A value is applied as facetFilters:{<field>:[<value>, …]} (values ORed;
+// Aramark department "Early Careers" → 32 of 6897, + "Culinary" → 1003).
+
+/** CSB facet fields + labels from the search page script. @param {string} html */
+export function extractCsbFacetFields(html) {
+  const text = String(html || '');
+  const start = text.indexOf('var facetFields');
+  if (start < 0) return [];
+  const end = text.indexOf('searchFacet.facetFields', start);
+  const seg = text.slice(start, end > start ? end : start + 5000);
+  const out = [];
+  for (const m of seg.matchAll(/fieldId\s*:\s*["']([\w.-]+)["']\s*,\s*label\s*:\s*["']([^"']*)["']/g)) {
+    if (!out.some((f) => f.field === m[1])) out.push({ field: m[1], label: clean(m[2]) });
+  }
+  return out;
+}
+
+/**
+ * Discover the CSB student facet over every locale. Per-locale value counts
+ * are summed, the shared picker chooses the field, and only locales where the
+ * chosen values have postings are crawled. Returns null when the page lists
+ * no facet fields or no faceting request succeeds.
+ * @param {any} cfg @param {import('./_types.js').Context} ctx @param {string} html @param {string[]} locales @param {RegExp} re
+ */
+async function discoverCsbFacet(cfg, ctx, html, locales, re) {
+  const fields = extractCsbFacetFields(html);
+  if (!fields.length) return null;
+  const perLocale = [];
+  // Locales whose faceting request failed are never crawled by the facet read,
+  // so the caller marks that read incomplete instead of reporting a full board.
+  const failedLocales = [];
+  let boardTotal = 0;
+  for (const locale of locales) {
+    let json;
+    try {
+      json = await ctx.fetchJson(cfg.jobsApi, {
+        method: 'POST',
+        redirect: 'error',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ facetingOnly: true, locale, keywords: cfg.keywords || '', location: cfg.location || '', facetFields: fields.map((f) => f.field), facetFilters: {} }),
+      });
+    } catch {
+      failedLocales.push(locale);
+      continue;
+    }
+    if (typeof json?.totalJobs === 'number') boardTotal += json.totalJobs;
+    const counts = {};
+    for (const f of Array.isArray(json?.facetFields) ? json.facetFields : []) {
+      if (!f || typeof f.name !== 'string' || !Array.isArray(f.values)) continue;
+      const m = new Map();
+      for (const v of f.values) if (v && typeof v.name === 'string' && v.name) m.set(v.name, (m.get(v.name) || 0) + (Number(v.count) || 0));
+      counts[f.name] = m;
+    }
+    perLocale.push({ locale, counts });
+  }
+  if (!perLocale.length) return null;
+  const merged = {};
+  for (const { counts } of perLocale) {
+    for (const [field, m] of Object.entries(counts)) {
+      const acc = (merged[field] ??= new Map());
+      for (const [name, count] of m) acc.set(name, (acc.get(name) || 0) + count);
+    }
+  }
+  const map = {};
+  for (const [field, m] of Object.entries(merged)) map[field] = [...m].map(([name, count]) => ({ name, count }));
+  const facet = pickStudentFacet({ facets: { map } }, fields, re);
+  // Summed per-locale totals: an upper bound (a posting can be published in
+  // several locales), reported only.
+  if (!facet) return { facet: null, locales: [], boardTotal };
+  const hitLocales = perLocale
+    .filter(({ counts }) => facet.values.some((v) => (counts[facet.name]?.get(v) || 0) > 0))
+    .map((p) => p.locale);
+  return { facet, locales: hitLocales, boardTotal, failedLocales };
+}
+
 // RMK strategy: the original /tile-search-results/ HTML-fragment scraper.
 /** @param {import('./_types.js').PortalEntry} entry @param {any} cfg @param {import('./_types.js').Context} ctx */
 async function fetchRmk(entry, cfg, ctx) {
@@ -429,7 +537,11 @@ async function fetchRmk(entry, cfg, ctx) {
 // The RMK crawl itself. Returns the jobs plus their tile ids (for cross-term
 // dedup in keyword mode) and whether max_jobs or the page cap stopped it.
 /** @param {import('./_types.js').PortalEntry} entry @param {any} cfg @param {import('./_types.js').Context} ctx */
-async function rmkCrawl(entry, cfg, ctx) {
+// `expected` (a count the site stated for this view) stops the crawl once
+// that many postings are read: past the last page some tenants (Under Armour
+// 2026-11-11) return a fixed block of unrelated postings instead of nothing.
+async function rmkCrawl(entry, cfg, ctx, { expected = null } = {}) {
+  if (expected === 0) return { jobs: [], ids: [], capped: false };
   const maxJobs = resolveMaxJobs(entry);
   const maxPages = Math.min(MAX_PAGES * pageScale(maxJobs), probePageCap(ctx));
   const jobs = [];
@@ -461,6 +573,7 @@ async function rmkCrawl(entry, cfg, ctx) {
     }
     // No new ids this page → server ignored the offset (or we've looped). Stop.
     if (fresh === 0) break;
+    if (expected !== null && jobs.length >= expected && jobs.length < maxJobs) break;
     if (jobs.length >= maxJobs) {
       capped = true;
       console.error(`⚠️  successfactors: ${entry.name} stopped at max_jobs=${maxJobs} — raise max_jobs on this entry for more`);
@@ -472,8 +585,10 @@ async function rmkCrawl(entry, cfg, ctx) {
     }
   }
   if (page === maxPages) capped = true;
-  // The cap is checked between pages, so the last page can overshoot it.
-  return { jobs: jobs.slice(0, maxJobs), ids: ids.slice(0, maxJobs), capped };
+  // The cap is checked between pages, so the last page can overshoot it; a
+  // stated count trims the same way (anything past it is the filler block).
+  const keep = expected !== null && expected < maxJobs ? expected : maxJobs;
+  return { jobs: jobs.slice(0, keep), ids: ids.slice(0, keep), capped };
 }
 
 // ── Keyword search (2026-11-09) ──────────────────────────────────────────────
@@ -505,9 +620,16 @@ export function normalizeKeywords(raw) {
 // The last <b> number inside the label is the total (thousands separators
 // stripped). A board with no hits renders no label → null (unknown).
 /** @param {string} html */
+// Tile-layout tenants (Under Armour, Compass, Edison 2026-11-11) render no
+// label; their page script states the count instead:
+//   j2w.SearchResults.init({ …, jobRecordsPerPage: parseInt("10"), jobRecordsFound: parseInt("724") });
 export function parseRmkTotal(html) {
-  const label = String(html || '').match(/class="paginationLabel"[^>]*>([\s\S]*?)<\/span>/);
-  if (!label) return null;
+  const text = String(html || '');
+  const label = text.match(/class="paginationLabel"[^>]*>([\s\S]*?)<\/span>/);
+  if (!label) {
+    const found = text.match(/jobRecordsFound\s*:\s*parseInt\(\s*["'](\d+)["']\s*\)/);
+    return found ? Number(found[1]) : null;
+  }
   const nums = [...label[1].matchAll(/<b>\s*([\d.,\s  ]+?)\s*<\/b>/g)].map((m) => m[1].replace(/\D/g, ''));
   const last = nums.length ? nums[nums.length - 1] : '';
   if (!last) return null;
@@ -697,11 +819,17 @@ async function fetchByFacet(entry, cfg, ctx, facet, boardTotal, termCount) {
 // while a double-quoted query is a phrase search ("early career" 7 vs 226
 // unquoted). A multi-word term is therefore sent quoted; single words and
 // terms the caller already quoted go as-is.
+// The CSB jobs API behaves the same way (Aramark 2026-11-11, en_US, board
+// 6897: keywords `early career` → 6843 hits, `graduate program` → 3012, so the
+// term crawl hit max_jobs and the whole read came back truncated; quoted
+// `"early career"` → 35, `"graduate program"` → 0), so the quoted phrase goes
+// into the CSB `keywords` body field too.
 /** Config for one search term: q=<term> on the tile requests, keywords=<term> on CSB. @param {any} cfg @param {string} term */
 export function termConfig(cfg, term) {
   const sp = new URLSearchParams(cfg.searchQuery);
-  sp.set('q', /\s/.test(term) && !/^".*"$/.test(term) ? `"${term}"` : term);
-  return { ...cfg, searchQuery: sp.toString(), keywords: term };
+  const q = /\s/.test(term) && !/^".*"$/.test(term) ? `"${term}"` : term;
+  sp.set('q', q);
+  return { ...cfg, searchQuery: sp.toString(), keywords: q };
 }
 
 // Today's full-board fetch (no keywords).
@@ -714,6 +842,8 @@ async function fetchFull(entry, cfg, ctx) {
   if (String(entry.sfVariant || '').toLowerCase() === 'csb') {
     return fetchCsb(entry, cfg, ctx);
   }
+  // A category page is an RMK filter view; an empty one is just empty.
+  if (cfg.category) return (await rmkCrawl(entry, cfg, ctx, { expected: await categoryCount(cfg, ctx) })).jobs;
   const rmkJobs = await fetchRmk(entry, cfg, ctx);
   if (rmkJobs.length > 0) return rmkJobs;
   // RMK answered (healthy, possibly legitimately empty) — the CSB call here
@@ -725,26 +855,69 @@ async function fetchFull(entry, cfg, ctx) {
 // Run the crawl once per term and merge: term order, then page order; dedup by
 // job id (URL as fallback). Marks the array with keywordSearch and truncated.
 /** @param {import('./_types.js').PortalEntry} entry @param {any} cfg @param {import('./_types.js').Context} ctx @param {string[]} terms @param {number|null} boardTotal */
-async function fetchByKeywords(entry, cfg, ctx, terms, boardTotal) {
+async function fetchByKeywords(entry, cfg, ctx, terms, boardTotal, html = null) {
   const isCsb = String(entry.sfVariant || '').toLowerCase() === 'csb';
-  let results = [];
   if (!isCsb) {
+    const results = [];
     for (const term of terms) results.push(await rmkCrawl(entry, termConfig(cfg, term), ctx));
     // Every term empty: either no matches on an RMK board, or a CSB tenant
     // whose tile endpoint is an empty shell. One unfiltered tile page tells
     // them apart; only the empty shell switches to the CSB API.
     if (results.every((r) => r.jobs.length === 0)) {
       const probe = await ctx.fetchText(tileUrl(cfg, 0), { redirect: 'error', headers: { accept: 'text/html' } });
-      if (parseTiles(probe, cfg.jobBase).length === 0) {
-        results = [];
-        for (const term of terms) results.push(await csbCrawl(entry, termConfig(cfg, term), ctx, { probe: true }));
+      if (parseTiles(probe, cfg.jobBase).length === 0) return fetchCsbSearch(entry, cfg, ctx, terms, boardTotal, html, true);
+    }
+    return mergeRuns(terms, results, { mode: 'keywords', terms: terms.length, boardTotal });
+  }
+  return fetchCsbSearch(entry, cfg, ctx, terms, boardTotal, html, false);
+}
+
+// CSB search: the student facet first (entry.facet: false skips it), then one
+// keyword query per term. Locales come from the search page when it was read.
+/** @param {import('./_types.js').PortalEntry} entry @param {any} cfg @param {import('./_types.js').Context} ctx @param {string[]} terms @param {number|null} boardTotal @param {string|null} html @param {boolean} probe */
+async function fetchCsbSearch(entry, cfg, ctx, terms, boardTotal, html, probe) {
+  const pageLocales = html ? extractLocales(html) : [];
+  if (entry.facet !== false && html) {
+    const found = await discoverCsbFacet(cfg, ctx, html, pageLocales.length ? pageLocales : CSB_DEFAULT_LOCALES, facetValueMatcher(entry.facet_values));
+    if (found && boardTotal === null && found.boardTotal > 0) boardTotal = found.boardTotal;
+    if (found?.facet && found.locales.length) {
+      const r = await csbCrawl(entry, { ...cfg, facetFilters: { [found.facet.name]: found.facet.values } }, ctx, { probe, locales: found.locales });
+      if (r.jobs.length) {
+        const merged = mergeRuns([found.facet.values.join(' | ')], [r], { mode: 'facet', facet: found.facet, terms: terms.length, boardTotal });
+        if (found.failedLocales?.length) {
+          console.error(`⚠️  successfactors: ${entry.name} facet read truncated — faceting failed for locale(s) ${found.failedLocales.join(', ')}`);
+          merged.truncated = true;
+        }
+        return merged;
       }
     }
-  } else {
-    for (const term of terms) results.push(await csbCrawl(entry, termConfig(cfg, term), ctx));
   }
-
+  const results = [];
+  for (const term of terms) results.push(await csbCrawl(entry, termConfig(cfg, term), ctx, { probe, locales: pageLocales }));
   return mergeRuns(terms, results, { mode: 'keywords', terms: terms.length, boardTotal });
+}
+
+/** The count a category page states for itself; null when it cannot be read. @param {any} cfg @param {import('./_types.js').Context} ctx */
+async function categoryCount(cfg, ctx) {
+  try {
+    return parseRmkTotal(await ctx.fetchText(cfg.category.page, { redirect: 'error', headers: { accept: 'text/html' } }));
+  } catch {
+    return null; // no stated count: page until the tiles run out
+  }
+}
+
+// A configured category page (careers_url …/go/<Name>/<id>/) read in keyword
+// mode: the category is the site's own filter, so it is read instead of the
+// keyword queries and reported as a facet read.
+/** @param {import('./_types.js').PortalEntry} entry @param {any} cfg @param {import('./_types.js').Context} ctx @param {string[]} terms */
+async function fetchByCategory(entry, cfg, ctx, terms) {
+  // The unfiltered search page gives the whole-board count for the receipt;
+  // the category page states the category's own count, which ends the crawl.
+  const html = await rmkSearchPage(cfg, ctx);
+  const boardTotal = html === null ? null : parseRmkTotal(html);
+  const r = await rmkCrawl(entry, cfg, ctx, { expected: await categoryCount(cfg, ctx) });
+  const facet = { name: 'category', label: 'Category', values: [cfg.category.name] };
+  return mergeRuns([cfg.category.name], [r], { mode: 'facet', facet, terms: terms.length, boardTotal });
 }
 
 /** @type {Provider} */
@@ -765,6 +938,8 @@ export default {
     // A health probe (ctx.maxPages) only checks the board is live: unfiltered
     // pages, no facet or keyword requests, no keywordSearch marker.
     if (!terms.length || probePageCap(ctx) !== Infinity) return fetchFull(entry, cfg, ctx);
+    // A configured category page is already the site's own filter.
+    if (cfg.category) return fetchByCategory(entry, cfg, ctx, terms);
 
     // keyword_min_total: keep small boards on the full fetch. The total comes
     // from the RMK /search/ page; CSB boards (and a page without a count) give
@@ -774,8 +949,9 @@ export default {
     const minTotal = Number.isInteger(entry.keyword_min_total) && entry.keyword_min_total > 0 ? entry.keyword_min_total : null;
     let boardTotal = null;
     let html = null;
-    if (!isCsb && (minTotal !== null || useFacet)) html = await rmkSearchPage(cfg, ctx);
-    if (minTotal !== null) {
+    // CSB reads the page too: its locale links and facet field list.
+    if (isCsb ? entry.facet !== false : minTotal !== null || useFacet) html = await rmkSearchPage(cfg, ctx);
+    if (minTotal !== null && !isCsb) {
       boardTotal = html === null ? null : parseRmkTotal(html);
       if (boardTotal !== null && boardTotal <= minTotal) return fetchFull(entry, cfg, ctx);
     }
@@ -788,6 +964,6 @@ export default {
         if (byFacet) return byFacet;
       }
     }
-    return fetchByKeywords(entry, cfg, ctx, terms, boardTotal);
+    return fetchByKeywords(entry, cfg, ctx, terms, boardTotal, html);
   },
 };

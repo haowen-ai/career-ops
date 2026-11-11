@@ -21,7 +21,8 @@ import { sleep } from './_http.mjs';
 // `?jobOffset=6` returns page 1 unchanged, `?offset=6` advances). This is
 // self-healing: we start with `jobOffset`, and if the first paginated page comes
 // back identical to page 0 (every id already seen → the param is inert), we
-// retry that page once with `offset` and adopt whichever key actually advances.
+// retry that page with the other known keys (see OFFSET_KEYS; 2026-11-11) and
+// adopt whichever key actually advances.
 // So a new branded tenant needs no configuration. An entry can still pin the key
 // explicitly via `offset_param` (disables the auto-switch) as an escape hatch.
 //
@@ -44,6 +45,21 @@ import { sleep } from './_http.mjs';
 //     throws with that explanation.
 // Bot walls seen (not bypassed): careers.cbre.com and careers.ralphlauren.com
 // answer 202 with an AWS WAF JavaScript challenge (challenge.js).
+//
+// 2026-11-11 additions:
+//   - Branded list pages are not always called SearchJobs: Siemens Energy has
+//     per-country saved searches (/en_US/jobs/SearchJobsUS; its bare SearchJobs
+//     302s to a 404), Enel lists US jobs under /en_US/careers/JobOpeningsUSA.
+//     An explicit path whose last segment starts with Search… or JobOpenings…
+//     is honoured as-is.
+//   - The careers_url query string is kept (offset keys dropped) and sent on
+//     every page, so an entry can use the site's own filter, e.g. TotalEnergies
+//     `SearchJobs?search=United%20States` (168 US rows vs a 999+ global board).
+//   - Siemens Energy rows link `/FolderDetail/<slug>/<id>` instead of JobDetail;
+//     both are parsed.
+//   - The pagination key is read from the page's own pager links (jobOffset,
+//     folderOffset or offset — Siemens Energy only answers folderOffset). The
+//     page-1 self-heal now tries each remaining key in turn.
 
 const PAGE_SIZE = 6; // Avature serves exactly 6 results per page
 const DEFAULT_MAX_PAGES = 50; // ~300 postings; override via entry.max_pages
@@ -53,8 +69,9 @@ const HARD_MAX_PAGES = 200;
 // gap risks the tenant's WAF rate-limiting the burst. Mirrors workday's
 // INTER_PAGE_DELAY_MS — only boards that paginate past page 0 pay it.
 const INTER_PAGE_DELAY_MS = 250;
-// The bare key we self-heal to when the primary (`jobOffset`) proves inert.
-const FALLBACK_OFFSET_PARAM = 'offset';
+// Pagination keys seen across tenants. The self-heal tries the ones not in
+// use, in this order, when page 1 does not advance.
+const OFFSET_KEYS = ['jobOffset', 'offset', 'folderOffset'];
 
 const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
 
@@ -71,8 +88,14 @@ function resolveConfig(entry) {
   // Honour an explicit SearchJobs path (branded tenants may prefix a locale,
   // e.g. /en_US/searchjobs/SearchJobs); otherwise default to the classic path.
   // Legacy tenants (KPMG US) list jobs under /careers/SearchResults instead.
-  const searchPath = /\/Search(?:Jobs|Results)\b/i.test(u.pathname) ? u.pathname.replace(/\/+$/, '') : '/careers/SearchJobs';
-  return { searchUrl: `${u.origin}${searchPath}`, origin: u.origin };
+  // Branded saved searches (SearchJobsUS, JobOpeningsUSA) are honoured too.
+  const path = u.pathname.replace(/\/+$/, '');
+  const searchPath = /\/Search(?:Jobs|Results)\b/i.test(path) || /\/(?:Search|JobOpenings)[A-Za-z]*$/.test(path) ? path : '/careers/SearchJobs';
+  // Keep the entry's own filter (e.g. ?search=United%20States); drop offsets,
+  // which fetch() sets per page.
+  const params = new URLSearchParams(u.search);
+  for (const k of OFFSET_KEYS) params.delete(k);
+  return { searchUrl: `${u.origin}${searchPath}`, origin: u.origin, query: params.toString() };
 }
 
 /** @param {string} s */
@@ -98,7 +121,9 @@ function parseLocation(block) {
   const m =
     block.match(/list-item-location[^>]*>([\s\S]*?)<\/span>/i) ||
     block.match(/class="[^"]*\blocation\b[^"]*"[^>]*>([\s\S]*?)<\/(?:span|div|li)>/i) ||
-    block.match(/glyphicon-map-marker[\s\S]{0,80}?>([^<]{2,60})</i);
+    block.match(/glyphicon-map-marker[\s\S]{0,80}?>([^<]{2,60})</i) ||
+    // TotalEnergies: <li class="list-item list-item-jobCountry">United States / US</li>
+    block.match(/list-item-job(?:Location|City|Country)\b[^>]*>([\s\S]*?)<\/li>/i);
   return m ? clean(m[1]) : '';
 }
 
@@ -109,10 +134,24 @@ export function parseArticles(htmlText, origin) {
   // appends a position index (`article--result 1`). Accept any suffix.
   // Deloitte drops the leading `article` token (`class="article--result "`), so
   // match the article--result token anywhere in the class attribute.
-  const re = /<article class="[^"]*\barticle--result\b[^"]*"[\s\S]*?<\/article>/g;
+  // Enel and TotalEnergies render the row as <div class="article article--result">
+  // (2026-11-11), whose </div> can't delimit it, so each row runs from its own
+  // opening tag to the next row's (or </article> for the <article> form). The
+  // class must hold the exact `article--result` token: Siemens Energy nests
+  // `article--result--container` / `--actions` inside each row.
+  const startRe = /<(article|div) class="(?:[^"]*\s)?article--result(?:\s[^"]*)?"/g;
+  const starts = [];
   let a;
-  while ((a = re.exec(htmlText)) !== null) {
-    const block = a[0];
+  while ((a = startRe.exec(htmlText)) !== null) starts.push({ at: a.index, tag: a[1] });
+  for (let i = 0; i < starts.length; i++) {
+    const end = i + 1 < starts.length ? starts[i + 1].at : htmlText.length;
+    let block = htmlText.slice(starts[i].at, end);
+    if (starts[i].tag === 'article') {
+      const close = block.indexOf('</article>');
+      if (close >= 0) block = block.slice(0, close + '</article>'.length);
+    } else if (i + 1 === starts.length) {
+      block = block.slice(0, 8000); // last <div> row: don't run into the page footer
+    }
     // JobDetail path may or may not sit under /careers/ (branded tenants vary),
     // so anchor on JobDetail/ itself rather than a fixed prefix. Prefer the
     // `class="link"` title anchor (most tenants); fall back to any JobDetail
@@ -120,14 +159,14 @@ export function parseArticles(htmlText, origin) {
     // class. Share/mailto buttons url-encode the path (%2FJobDetail%2F) so they
     // never match the literal `/JobDetail/` and can't be mistaken for the title.
     const urlM =
-      block.match(/<a[^>]*class="link"[^>]*href="([^"]*\/JobDetail\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/) ||
-      block.match(/<a[^>]*href="([^"]*\/JobDetail\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/);
+      block.match(/<a[^>]*class="link"[^>]*href="([^"]*\/(?:Job|Folder)Detail\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/) ||
+      block.match(/<a[^>]*href="([^"]*\/(?:Job|Folder)Detail\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/);
     if (!urlM) continue;
     const title = clean(urlM[2]);
     if (!title) continue;
     let url = decodeEntities(urlM[1]);
     if (!/^https?:\/\//i.test(url)) url = origin + (url.startsWith('/') ? url : '/' + url);
-    const idM = url.match(/\/JobDetail\/[^/]*\/(\d+)/);
+    const idM = url.match(/\/(?:Job|Folder)Detail\/(?:[^/?#]*\/)?(\d+)/);
     out.push({
       id: idM ? idM[1] : url,
       title,
@@ -186,11 +225,28 @@ export function parsePage(htmlText, origin) {
 /** Distinct JobDetail hrefs on a page = rows the server returned (parsed or not). */
 export function countJobRows(htmlText) {
   if (typeof htmlText !== 'string') return 0;
-  return new Set(htmlText.match(/href="[^"]*\/JobDetail[/?][^"]*"/g) || []).size;
+  return new Set(htmlText.match(/href="[^"]*\/(?:Job|Folder)Detail[/?][^"]*"/g) || []).size;
+}
+
+/**
+ * The pagination key the page's own pager links use (most frequent of
+ * OFFSET_KEYS), or null when the page has no pager links.
+ * @param {string} htmlText
+ * @returns {string|null}
+ */
+export function pagerOffsetParam(htmlText) {
+  if (typeof htmlText !== 'string') return null;
+  const counts = new Map();
+  for (const m of htmlText.matchAll(/href="[^"]*[?&](?:amp;)?(jobOffset|folderOffset|offset)=\d+/g)) {
+    counts.set(m[1], (counts.get(m[1]) || 0) + 1);
+  }
+  let best = null;
+  for (const [k, n] of counts) if (best === null || n > counts.get(best)) best = k;
+  return best;
 }
 
 export function countDetailLinks(htmlText) {
-  const jobs = (htmlText.match(/href="[^"]*\/JobDetail[/?][^"]*"/g) || []).length;
+  const jobs = (htmlText.match(/href="[^"]*\/(?:Job|Folder)Detail[/?][^"]*"/g) || []).length;
   const pipelines = (htmlText.match(/href="[^"]*\/PipelineDetail\/[^"]*"/g) || []).length;
   return { jobs, pipelines };
 }
@@ -231,7 +287,7 @@ export default {
     const seen = new Set();
 
     const getPage = async (param, offset) => {
-      const htmlText = await ctx.fetchText(`${cfg.searchUrl}?${param}=${offset}`, {
+      const htmlText = await ctx.fetchText(`${cfg.searchUrl}?${cfg.query ? `${cfg.query}&` : ''}${param}=${offset}`, {
         redirect: 'error',
         headers: { accept: 'text/html' },
       });
@@ -248,6 +304,7 @@ export default {
       // Server-side row count drives paging, so one unparsable card does not
       // look like a short (last) page or shift the offset.
       parsed.rows = Math.max(parsed.length, countJobRows(htmlText));
+      parsed.pagerParam = offset === 0 ? pagerOffsetParam(htmlText) : null;
       return parsed;
     };
     // Absorb a page's articles, returning how many were not already seen.
@@ -276,24 +333,30 @@ export default {
       if (page > 0) await sleep(INTER_PAGE_DELAY_MS, ctx);
       let articles = await getPage(offsetParam, offset);
       let fresh = absorb(articles);
+      // Follow the key the page's own pager uses (unless the entry pinned one).
+      if (page === 0 && !pinned && articles.pagerParam) offsetParam = articles.pagerParam;
 
       // Self-heal: the first paginated page didn't advance — either it repeated
       // page 0 (all-dup) or came back empty because the primary key is inert
       // (some tenants echo page 0 for an unknown param, others return nothing).
-      // Retry this page once with the fallback key; if it advances, adopt it for
+      // Retry this page with each other known key; adopt the first that advances for
       // the remainder. Only on page 1 — inert pagination manifests immediately,
       // so a later non-advancing page is a genuine end-of-board, not a mismatch.
       // NOTE: fresh === 0 must be evaluated before the empty-page break below,
       // or an inert key that returns an empty page 1 would exit without healing.
       if (fresh === 0 && canHeal && page === 1) {
         canHeal = false;
-        await sleep(INTER_PAGE_DELAY_MS, ctx);
-        const altArticles = await getPage(FALLBACK_OFFSET_PARAM, offset);
-        const altFresh = absorb(altArticles);
-        if (altFresh > 0) {
-          offsetParam = FALLBACK_OFFSET_PARAM;
-          articles = altArticles;
-          fresh = altFresh;
+        for (const alt of OFFSET_KEYS) {
+          if (alt === offsetParam) continue;
+          await sleep(INTER_PAGE_DELAY_MS, ctx);
+          const altArticles = await getPage(alt, offset);
+          const altFresh = absorb(altArticles);
+          if (altFresh > 0) {
+            offsetParam = alt;
+            articles = altArticles;
+            fresh = altFresh;
+            break;
+          }
         }
       }
 

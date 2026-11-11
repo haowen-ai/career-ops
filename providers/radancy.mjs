@@ -97,14 +97,14 @@ export function resolveListUrl(entry) {
  * @param {number} page 1-based page number.
  * @param {number} recordsPerPage
  */
-export function buildFragmentUrl(listUrl, page, recordsPerPage = FRAGMENT_RECORDS_PER_PAGE) {
+export function buildFragmentUrl(listUrl, page, recordsPerPage = FRAGMENT_RECORDS_PER_PAGE, keywords = '') {
   const q = new URLSearchParams({
     ActiveFacetID: '0',
     CurrentPage: String(page),
     RecordsPerPage: String(recordsPerPage),
     Distance: '50',
     RadiusUnitType: '0',
-    Keywords: '',
+    Keywords: keywords,
     Location: '',
     ShowRadius: 'False',
     IsPagination: 'True',
@@ -242,6 +242,140 @@ function resolveMaxJobs(entry) {
   return DEFAULT_MAX_JOBS;
 }
 
+// ── Keyword search (2026-11-11) ──────────────────────────────────────────────
+// Big boards are read through the site's own search instead of paging the
+// whole board (same contract as successfactors/workday): entry.keywords (array
+// of terms, filled in by the caller) runs the fragment walk once per term with
+// the term in `Keywords=`, and entry.keyword_min_total keeps boards at or below
+// that size on the full read. Verified live 2026-11-11: UHG board 6408 →
+// "intern" 110; Kaiser 3144 → 100; CommonSpirit 5836 → 136. The site search is
+// a fuzzy word match (an unquoted "summer associate" matches either word; a
+// double-quoted phrase returns 0 on these tenants), so terms are sent as-is and
+// the results are a superset to be filtered later by title rules. Keyword mode
+// needs the JSON fragment endpoint; a tenant without it keeps the full read.
+
+const FRAGMENT_HEADERS = { accept: 'application/json', 'x-requested-with': 'XMLHttpRequest' };
+
+/** Normalise entry.keywords to a de-duplicated list of non-empty terms. @param {unknown} raw */
+export function normalizeKeywords(raw) {
+  const list = Array.isArray(raw) ? raw : typeof raw === 'string' ? [raw] : [];
+  const out = [];
+  for (const k of list) {
+    if (typeof k !== 'string') continue;
+    const t = k.trim();
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out;
+}
+
+/**
+ * Walk the fragment pages for one search term.
+ * @returns {Promise<{rows: {id:string,title:string,url:string,location:string}[], capped: boolean, total: number|null}>}
+ */
+async function walkTerm(listUrl, origin, term, ctx, wait, maxPages, maxJobs) {
+  const rows = [];
+  const seen = new Set();
+  const push = (list) => {
+    let fresh = 0;
+    for (const row of list) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      fresh++;
+      rows.push(row);
+    }
+    return fresh;
+  };
+  // A first-page failure propagates; the caller decides what it means.
+  const first = await ctx.fetchJson(buildFragmentUrl(listUrl, 1, FRAGMENT_RECORDS_PER_PAGE, term), { headers: FRAGMENT_HEADERS });
+  if (typeof first?.results !== 'string') throw new Error(`radancy: malformed keyword response for "${term}"`);
+  const firstRows = first.results ? parseResults(first.results, origin) : [];
+  if (!firstRows.length) return { rows, capped: false, total: 0 };
+  const { totalResults, totalPages } = readFragmentTotals(first.results);
+  push(firstRows);
+  const lastPage = Math.min(totalPages ?? maxPages, maxPages);
+  let walkedAll = totalPages != null && totalPages <= maxPages && lastPage <= 1;
+  for (let page = 2; page <= lastPage && rows.length < maxJobs; page++) {
+    await wait(PAGE_DELAY_MS);
+    let list;
+    try {
+      const json = await ctx.fetchJson(buildFragmentUrl(listUrl, page, FRAGMENT_RECORDS_PER_PAGE, term), { headers: FRAGMENT_HEADERS });
+      const frag = typeof json?.results === 'string' ? json.results : '';
+      list = frag ? parseResults(frag, origin) : [];
+    } catch {
+      break; // keep earlier pages; reported as capped below
+    }
+    if (list.length === 0) break;
+    if (push(list) === 0) break;
+    if (page === lastPage && totalPages != null && totalPages <= maxPages) walkedAll = true;
+  }
+  const returned = Math.min(rows.length, maxJobs);
+  // Same rule as the full walk: reading every server page without hitting
+  // max_jobs is complete even when the server's count is higher.
+  const capped = !(walkedAll && rows.length <= maxJobs) && totalResults != null && returned < totalResults;
+  return { rows: rows.slice(0, maxJobs), capped, total: totalResults };
+}
+
+/**
+ * Keyword mode: one fragment walk per term, merged in term order and deduped
+ * by job id. Returns null when the fragment endpoint is not usable for the
+ * board-size probe (the caller then does the full read).
+ */
+async function fetchByKeywords(entry, ctx, listUrl, origin, terms, wait, maxPages, maxJobs) {
+  const minTotal = Number.isInteger(entry.keyword_min_total) && entry.keyword_min_total > 0 ? entry.keyword_min_total : null;
+  // Board size from the unfiltered fragment's own count. A probe that fails or
+  // parses to nothing means no usable fragment endpoint → full read.
+  let boardTotal = null;
+  try {
+    const probe = await ctx.fetchJson(buildFragmentUrl(listUrl, 1), { headers: FRAGMENT_HEADERS });
+    const html = typeof probe?.results === 'string' ? probe.results : '';
+    if (!html || parseResults(html, origin).length === 0) return null;
+    boardTotal = readFragmentTotals(html).totalResults;
+  } catch {
+    return null;
+  }
+  if (minTotal !== null && boardTotal !== null && boardTotal <= minTotal) return null;
+
+  const jobs = [];
+  const seen = new Set();
+  const perTerm = {};
+  let truncated = false;
+  let firstError = null;
+  let answered = 0;
+  for (const term of terms) {
+    await wait(PAGE_DELAY_MS);
+    let r;
+    try {
+      r = await walkTerm(listUrl, origin, term, ctx, wait, maxPages, maxJobs);
+      answered++;
+    } catch (err) {
+      firstError ??= err;
+      truncated = true;
+      perTerm[term] = 0;
+      console.error(`⚠️  radancy: ${entry.name} keyword "${term}" failed (${err.message}) — results partial`);
+      continue;
+    }
+    perTerm[term] = r.rows.length;
+    if (r.capped) {
+      truncated = true;
+      console.error(`⚠️  radancy: ${entry.name} keyword "${term}" truncated at ${r.rows.length} of ${r.total} postings — raise max_jobs/max_pages on this entry for more`);
+    }
+    for (const row of r.rows) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      jobs.push({ title: row.title, url: row.url, company: entry.name, location: row.location });
+    }
+  }
+  // Every term failed after the probe answered: the search itself is broken —
+  // surface it instead of "live but empty".
+  if (answered === 0 && firstError) throw firstError;
+  Object.defineProperty(jobs, 'keywordSearch', {
+    value: { mode: 'keywords', terms: terms.length, boardTotal, perTerm },
+    enumerable: true, writable: true, configurable: true,
+  });
+  if (truncated) jobs.truncated = true;
+  return jobs;
+}
+
 /** @type {Provider} */
 export default {
   id: 'radancy',
@@ -260,6 +394,16 @@ export default {
     const wait = (ms) => (ctx.sleep ? ctx.sleep(ms) : new Promise((r) => setTimeout(r, ms)));
     const maxPages = resolveMaxPages(entry);
     const maxJobs = resolveMaxJobs(entry);
+
+    // Keyword mode (entry.keywords from the caller). A health probe
+    // (ctx.maxPages) or a ctx without fetchJson keeps the full read.
+    const terms = normalizeKeywords(entry.keywords);
+    const isProbe = Number.isInteger(ctx?.maxPages) && ctx.maxPages > 0;
+    if (terms.length && !isProbe && typeof ctx.fetchJson === 'function') {
+      const byKeywords = await fetchByKeywords(entry, ctx, listUrl, origin, terms, wait, maxPages, maxJobs);
+      if (byKeywords) return byKeywords;
+    }
+
     const jobs = [];
     const seen = new Set();
     // Proof of life across BOTH transports: any resolved request — including a

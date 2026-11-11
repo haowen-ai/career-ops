@@ -102,3 +102,134 @@ test('regression: a card with an empty title does not truncate later pages', asy
   const jobs = await avatureForRows.fetch({ name: 'X', careers_url: 'https://x.avature.net/careers/SearchJobs' }, ctx);
   assert.equal(jobs.length, 29);
 });
+
+// ── 2026-11-11: branded saved-search paths, kept query, FolderDetail rows,
+// pager-driven offset key (Siemens Energy / Enel / TotalEnergies).
+const { pagerOffsetParam } = mod;
+// Row markup as served by jobs.siemens-energy.com/en_US/jobs/SearchJobsUS (trimmed).
+const seRow = (id, title = `Role ${id}`) => `
+  <article class="article article--result">
+    <details class="article--result--container js-fetch-jobInfo">
+      <summary class="article__header" tabindex="-1"><div class="article__header__text article__header__text--search-jobs">
+        <h3 class="article__header__text__title article__header__text__title--4">
+          <a class="article__header__focusable" href="https://jobs.siemens-energy.com/en_US/jobs/FolderDetail/${title.replace(/\W+/g, '-')}/${id}">
+            ${title}
+          </a>
+          <span class="hot-job-tag">Hot Job</span>
+        </h3></div></summary>
+      <div class="article__content" id="jobDetail-${id}" data-job-id="${id}" data-fetched="false"></div>
+    </details>
+    <div class="article--result--actions">
+      <a class="button button--secondary" href="https://jobs.siemens-energy.com/en_US/jobs/Login?folderId=${id}">Apply</a>
+    </div>
+  </article>`;
+const sePager = (base, offsets) =>
+  offsets.map((o) => `<a href="${base}/?folderRecordsPerPage=20&amp;folderOffset=${o}">${o / 20 + 1}</a>`).join('');
+
+test('parseArticles reads FolderDetail rows (Siemens Energy)', () => {
+  const rows = parseArticles(seRow(300397, 'Technical Project Lead – Compressor Components') + seRow(298765, 'Engineering Intern'), 'https://jobs.siemens-energy.com');
+  assert.deepEqual(rows.map((r) => r.id), ['300397', '298765']);
+  assert.equal(rows[0].title, 'Technical Project Lead – Compressor Components');
+  assert.equal(rows[1].url, 'https://jobs.siemens-energy.com/en_US/jobs/FolderDetail/Engineering-Intern/298765');
+  // the Login?folderId= apply button is not a row link
+  assert.equal(countDetailLinks(seRow(1)).jobs, 1);
+});
+
+test('pagerOffsetParam picks the key the pager links use', () => {
+  assert.equal(pagerOffsetParam(sePager('https://x/SearchJobsUS', [20, 40, 60])), 'folderOffset');
+  assert.equal(pagerOffsetParam('<a href="/careers/SearchJobs?jobOffset=6">2</a><a href="/careers/SearchJobs?jobOffset=12">3</a>'), 'jobOffset');
+  assert.equal(pagerOffsetParam('<a href="/x/SearchJobs/?offset=6">2</a>'), 'offset');
+  assert.equal(pagerOffsetParam('<div>no pager</div>'), null);
+  // a param that merely ends in "offset" (e.g. folderRecordsPerPage) is not a key
+  assert.equal(pagerOffsetParam('<a href="/x?folderRecordsPerPage=20">a</a>'), null);
+});
+
+test('fetch keeps a SearchJobsUS path and pages with the pager key (folderOffset)', async () => {
+  const base = 'https://jobs.siemens-energy.com/en_US/jobs/SearchJobsUS';
+  const calls = [];
+  const ctx = {
+    sleep: async () => {},
+    fetchText: async (url) => {
+      calls.push(url);
+      const u = new URL(url);
+      if (u.searchParams.has('jobOffset') && u.searchParams.get('jobOffset') !== '0') return 'page 0 echoed';
+      const off = Number(u.searchParams.get('folderOffset') ?? u.searchParams.get('jobOffset') ?? 0);
+      const n = off === 40 ? 5 : 20;
+      return Array.from({ length: n }, (_, i) => seRow(1000 + off + i)).join('') + sePager(base, [20, 40]);
+    },
+  };
+  const jobs = await avature.fetch({ name: 'Siemens Energy', careers_url: base }, ctx);
+  assert.equal(jobs.length, 45);
+  assert.deepEqual(calls, [`${base}?jobOffset=0`, `${base}?folderOffset=20`, `${base}?folderOffset=40`]);
+});
+
+test('fetch keeps a JobOpeningsUSA path (Enel) and the careers_url filter query (TotalEnergies)', async () => {
+  const first = async (entry) => {
+    const calls = [];
+    await avature.fetch(entry, { sleep: async () => {}, fetchText: async (url) => { calls.push(url); return ''; } });
+    return calls[0];
+  };
+  assert.equal(await first({ name: 'Enel', careers_url: 'https://jobs.enel.com/en_US/careers/JobOpeningsUSA' }), 'https://jobs.enel.com/en_US/careers/JobOpeningsUSA?jobOffset=0');
+  assert.equal(
+    await first({ name: 'TotalEnergies', careers_url: 'https://jobs.totalenergies.com/en_US/careers/SearchJobs?search=United%20States&jobOffset=40' }),
+    'https://jobs.totalenergies.com/en_US/careers/SearchJobs?search=United+States&jobOffset=0',
+  );
+  // a non-list path still falls back to the classic SearchJobs
+  assert.equal(await first({ name: 'X', careers_url: 'https://x.avature.net/en_US/careers/Home' }), 'https://x.avature.net/careers/SearchJobs?jobOffset=0');
+});
+
+test('self-heal tries folderOffset after offset when both earlier keys are inert', async () => {
+  const base = 'https://a.example/en_US/jobs/SearchJobs';
+  const calls = [];
+  const ctx = {
+    sleep: async () => {},
+    fetchText: async (url) => {
+      calls.push(url);
+      const f = new URL(url).searchParams.get('folderOffset');
+      const off = f === null ? 0 : Number(f);
+      return Array.from({ length: off === 0 ? 6 : off === 6 ? 2 : 0 }, (_, i) => art(500 + off + i, 'article article--result')).join('');
+    },
+  };
+  const jobs = await avature.fetch({ name: 'X', api: base }, ctx);
+  assert.equal(jobs.length, 8);
+  assert.deepEqual(calls.map((u) => u.split('?')[1]), ['jobOffset=0', 'jobOffset=6', 'offset=6', 'folderOffset=6']);
+});
+
+// <div class="article article--result"> rows (2026-11-11 live markup, trimmed).
+const enelRow = (id, title) => `
+  <div class="article article--result">
+    <div class="article__header"><div class="article__header__text">
+      <div class="article__header__text__ref">Job ID ${id}</div>
+      <h3 class="article__header__text__title article__header__text__title--6">
+        <a href="https://jobs.enel.com/en_US/careers/JobDetail/${id}?team=RenewableEnergies">${title}</a>
+      </h3>
+      <div class="article__header__text__subtitle">
+        <span class="article__header__text__subtitle--location">USA</span>
+        <span class="article__header__text__subtitle--separator">|</span>
+        <span class="article__header__text__subtitle--team">Renewable Energies</span>
+      </div>
+    </div></div>
+    <div class="article__footer"><a href="https://jobs.enel.com/en_US/careers/ApplicationMethods?jobId=${id}">Apply</a></div>
+  </div>`;
+const totalRow = (n, id, title, country) => `
+  <div class="article article--result" id="article--${n}">
+    <div class="article__header"><div class="article__header__text">
+      <h3 class="article__header__text__title title title--04">
+        <a class="link" href="https://jobs.totalenergies.com/en_US/careers/JobDetail/${title.replace(/\W+/g, '-')}/${id}">${title}</a>
+      </h3>
+      <ul class="list article__header__text__subtitle">
+        <li class="list-item list-item-jobCreationDate">11-11-2026</li> <li class="list-item list-item-jobCountry">${country}</li> <li class="list-item list-item-employmentType">Internship</li>
+      </ul>
+    </div></div>
+    <div class="article__footer"></div>
+  </div>`;
+
+test('parseArticles reads <div class="article article--result"> rows (Enel, TotalEnergies)', () => {
+  const enel = parseArticles(`<div class="results">${enelRow(22872, 'Renewable Technician I- Fencepost')}${enelRow(22901, 'Summer Intern')}</div><footer><span class="location">Rome</span></footer>`, 'https://jobs.enel.com');
+  assert.deepEqual(enel.map((r) => [r.id, r.title, r.location]), [['22872', 'Renewable Technician I- Fencepost', 'USA'], ['22901', 'Summer Intern', 'USA']]);
+  assert.equal(enel[1].url, 'https://jobs.enel.com/en_US/careers/JobDetail/22901?team=RenewableEnergies');
+  const total = parseArticles(totalRow(1, 86136, 'Sales Support Advisor', 'United Kingdom') + totalRow(2, 86140, 'Engineering Intern', 'United States / US'), 'https://jobs.totalenergies.com');
+  assert.deepEqual(total.map((r) => [r.id, r.title, r.location]), [['86136', 'Sales Support Advisor', 'United Kingdom'], ['86140', 'Engineering Intern', 'United States / US']]);
+  // nested --container / --actions classes are not row starts
+  assert.equal(parseArticles(seRow(7), 'https://jobs.siemens-energy.com').length, 1);
+});

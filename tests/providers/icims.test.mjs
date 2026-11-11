@@ -138,6 +138,159 @@ const mkCtx = (pages) => ({
   }
 }
 
+// ── fetch(): keyword mode (entry.keywords / entry.keyword_min_total) ─
+// Header markup copied from a live Emcor results page (2026-11-11).
+const pager = (n, of) => `<h2 class="iCIMS_SubHeader iCIMS_SubHeader_Jobs">
+Search Results
+Page ${n} of ${of} 
+</h2>`;
+const pagedPage = (n, of, ...cards) => `${pager(n, of)}${page(...cards)}`;
+const { parseIcimsPageCount } = mod;
+
+{
+  if (parseIcimsPageCount(pager(1, 31)) === 31) pass('parseIcimsPageCount reads "Page 1 of 31"');
+  else fail(`parseIcimsPageCount: ${parseIcimsPageCount(pager(1, 31))}`);
+  if (parseIcimsPageCount('<h2>Search Results Page 3 of 1,204</h2>') === 1204) pass('parseIcimsPageCount strips thousands separators');
+  else fail('parseIcimsPageCount did not read 1,204');
+  if (parseIcimsPageCount('<html>Sorry, no jobs were found</html>') === null) pass('parseIcimsPageCount null without a pager');
+  else fail('parseIcimsPageCount returned a number without a pager');
+}
+
+// A fake portal: unfiltered board of `boardPages` pages × `perPage` cards
+// (the last page holds `lastCount`), plus per-term keyword results.
+const mkKwCtx = ({ boardPages, perPage, lastCount = perPage, byTerm = {}, pageCountShown = true }) => {
+  const calls = [];
+  const sleeps = [];
+  return {
+    calls, sleeps,
+    transport: 'http',
+    sleep: async (ms) => { sleeps.push(ms); },
+    fetchJson: async () => { throw new Error('fetchJson should not be called'); },
+    fetchText: async (url) => {
+      const u = new URL(url);
+      const pr = Number(u.searchParams.get('pr'));
+      const term = u.searchParams.get('searchKeyword');
+      calls.push(term === null ? `board:${pr}` : `${term}:${pr}`);
+      if (term === null) {
+        if (pr >= boardPages) return page();
+        const n = pr === boardPages - 1 ? lastCount : perPage;
+        const cards = Array.from({ length: n }, (_, i) => mkCard(10000 + pr * perPage + i, `Board ${pr}-${i}`));
+        return pageCountShown ? pagedPage(pr + 1, boardPages, ...cards) : page(...cards);
+      }
+      const pages = byTerm[term] ?? [];
+      if (pr >= pages.length) return page();
+      return pagedPage(pr + 1, pages.length, ...pages[pr].map(([id, t]) => mkCard(id, t)));
+    },
+  };
+};
+const KW_ENTRY = { name: 'bigtenant', careers_url: `${ORIGIN}/jobs/search?ss=1` };
+const TERMS = ['intern', 'internship', 'summer analyst'];
+
+// Big board (31 pages × 50 > 400): one search per term, merged and
+// de-duplicated, never the whole board; multi-word term sent as-is.
+{
+  const ctx = mkKwCtx({
+    boardPages: 31, perPage: 50, lastCount: 7,
+    byTerm: {
+      intern: [[[1, 'BAS Intern'], [2, 'Safety Intern'], [3, 'Internal Lead Generator']]],
+      internship: [[[2, 'Safety Intern'], [4, '2027 Summer Engineering Internship']]],
+    },
+  });
+  const jobs = await icims.fetch({ ...KW_ENTRY, keywords: TERMS, keyword_min_total: 400 }, ctx);
+  const titles = jobs.map((j) => j.title).join('|');
+  if (titles === 'BAS Intern|Safety Intern|Internal Lead Generator|2027 Summer Engineering Internship') pass('keyword mode merges terms in order and de-duplicates by URL');
+  else fail(`keyword titles: ${titles}`);
+  const ks = jobs.keywordSearch;
+  if (ks && ks.mode === 'keywords' && ks.terms === 3 && ks.boardTotal === 30 * 50 + 7
+    && ks.perTerm.intern === 3 && ks.perTerm.internship === 2 && ks.perTerm['summer analyst'] === 0) {
+    pass(`keywordSearch metadata (board ${ks.boardTotal}, perTerm ${JSON.stringify(ks.perTerm)})`);
+  } else fail(`keywordSearch: ${JSON.stringify(ks)}`);
+  if (Object.keys(jobs).includes('keywordSearch')) pass('keywordSearch is enumerable (the bridge reads it off the array)');
+  else fail('keywordSearch is not enumerable');
+  if (jobs.truncated === undefined && jobs.icimsTruncated === undefined) pass('uncapped keyword search carries no truncation flag');
+  else fail(`truncated=${jobs.truncated} icimsTruncated=${jobs.icimsTruncated}`);
+  // Size check = page 0 + last page; then one page per term (the pager says
+  // 1 of 1, so no empty-page probe); a term with no hits costs one request.
+  if (ctx.calls.join(',') === 'board:0,board:30,intern:0,internship:0,summer analyst:0') pass('keyword mode reads only page 0 + last page of the board');
+  else fail(`calls: ${ctx.calls.join(',')}`);
+  if (ctx.sleeps.length === ctx.calls.length - 1 && ctx.sleeps.every((ms) => ms === 250)) pass('courtesy delay before every request after the first');
+  else fail(`sleeps=${ctx.sleeps.length} calls=${ctx.calls.length}`);
+}
+
+// The keyword request carries the term in searchKeyword, URL-encoded.
+{
+  const ctx = mkKwCtx({ boardPages: 31, perPage: 50 });
+  const urls = [];
+  const inner = ctx.fetchText;
+  ctx.fetchText = async (url, opts) => { urls.push(url); return inner(url, opts); };
+  await icims.fetch({ ...KW_ENTRY, keywords: ['summer analyst'], keyword_min_total: 400 }, ctx);
+  if (urls.includes(`${ORIGIN}/jobs/search?ss=1&searchKeyword=summer%20analyst&pr=0&in_iframe=1`)) pass('keyword URL uses searchKeyword=<encoded term>');
+  else fail(`urls: ${urls.join(' ')}`);
+}
+
+// Multi-page keyword result: follows the pager and stops at its last page.
+{
+  const ctx = mkKwCtx({
+    boardPages: 41, perPage: 50,
+    byTerm: { intern: [[[1, 'Intern A'], [2, 'Intern B']], [[3, 'Intern C']]] },
+  });
+  const jobs = await icims.fetch({ ...KW_ENTRY, keywords: ['intern'], keyword_min_total: 400 }, ctx);
+  if (jobs.length === 3 && ctx.calls.join(',') === 'board:0,board:40,intern:0,intern:1') pass('keyword search follows the pager to its last page');
+  else fail(`jobs=${jobs.length} calls=${ctx.calls.join(',')}`);
+}
+
+// A term that runs into the page cap marks the whole result truncated.
+{
+  const deepTerm = Array.from({ length: 40 }, (_, p) => [[5000 + p, `Student ${p}`]]);
+  const ctx = mkKwCtx({ boardPages: 31, perPage: 50, byTerm: { student: deepTerm } });
+  const jobs = await icims.fetch({ ...KW_ENTRY, keywords: ['student'], keyword_min_total: 400 }, ctx);
+  if (jobs.truncated === true && jobs.length === 30 && jobs.keywordSearch?.perTerm?.student === 30) pass('capped keyword query sets jobs.truncated');
+  else fail(`truncated=${jobs.truncated} jobs=${jobs.length}`);
+}
+
+// Small board (≤ keyword_min_total): the full read, no keywordSearch marker.
+{
+  const ctx = mkKwCtx({ boardPages: 3, perPage: 50, lastCount: 20, byTerm: { intern: [[[1, 'Intern A']]] } });
+  const jobs = await icims.fetch({ ...KW_ENTRY, keywords: TERMS, keyword_min_total: 400 }, ctx);
+  if (jobs.length === 120 && jobs.keywordSearch === undefined && !ctx.calls.some((c) => !c.startsWith('board:'))) {
+    pass('board of 120 ≤ 400 stays on the full read (no keyword requests)');
+  } else fail(`jobs=${jobs.length} ks=${JSON.stringify(jobs.keywordSearch)} calls=${ctx.calls.join(',')}`);
+}
+
+// Pager unreadable but cards present: counts as big (keyword mode, board unknown).
+{
+  const ctx = mkKwCtx({ boardPages: 5, perPage: 50, pageCountShown: false, byTerm: { intern: [[[1, 'Intern A']]] } });
+  const jobs = await icims.fetch({ ...KW_ENTRY, keywords: ['intern'], keyword_min_total: 400 }, ctx);
+  if (jobs.length === 1 && jobs.keywordSearch?.boardTotal === null) pass('no pager → keyword mode with boardTotal null');
+  else fail(`jobs=${jobs.length} ks=${JSON.stringify(jobs.keywordSearch)}`);
+}
+
+// Empty board: full read (returns []), no keyword requests.
+{
+  const ctx = mkKwCtx({ boardPages: 0, perPage: 50, byTerm: { intern: [[[1, 'Intern A']]] } });
+  const jobs = await icims.fetch({ ...KW_ENTRY, keywords: ['intern'], keyword_min_total: 400 }, ctx);
+  if (jobs.length === 0 && jobs.keywordSearch === undefined && ctx.calls.every((c) => c.startsWith('board:'))) pass('empty board stays on the full read');
+  else fail(`jobs=${jobs.length} calls=${ctx.calls.join(',')}`);
+}
+
+// keywords without keyword_min_total: straight to keyword mode, board unknown.
+{
+  const ctx = mkKwCtx({ boardPages: 2, perPage: 50, byTerm: { intern: [[[1, 'Intern A']]] } });
+  const jobs = await icims.fetch({ ...KW_ENTRY, keywords: ['intern'] }, ctx);
+  if (jobs.length === 1 && jobs.keywordSearch?.boardTotal === null && ctx.calls.join(',') === 'intern:0') pass('no keyword_min_total → keyword search without a size check');
+  else fail(`jobs=${jobs.length} calls=${ctx.calls.join(',')}`);
+}
+
+// No keywords (or keywords: [] / a health probe): byte-for-byte the old full read.
+{
+  for (const [label, extra, ctxExtra] of [['no keywords', {}, {}], ['empty keywords', { keywords: [] }, {}], ['health probe', { keywords: TERMS, keyword_min_total: 400 }, { maxPages: 1 }]]) {
+    const ctx = Object.assign(mkKwCtx({ boardPages: 2, perPage: 50, lastCount: 3 }), ctxExtra);
+    const jobs = await icims.fetch({ ...KW_ENTRY, ...extra }, ctx);
+    if (jobs.length === 53 && jobs.keywordSearch === undefined && ctx.calls.join(',') === 'board:0,board:1,board:2') pass(`${label}: unchanged full read`);
+    else fail(`${label}: jobs=${jobs.length} calls=${ctx.calls.join(',')}`);
+  }
+}
+
 // ── enrichDate(): detail-page JSON-LD ───────────────────────────────
 {
   const job = { title: 'X', url: `${ORIGIN}/jobs/1234/x/job`, company: 'acmefreight', location: 'US' };

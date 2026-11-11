@@ -357,6 +357,117 @@ try {
   } finally {
     console.error = realConsoleError;
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // KEYWORD MODE (2026-11-11): boards above entry.keyword_min_total are read
+  // through the site's own search, one fragment walk per term (Keywords=).
+  // ══════════════════════════════════════════════════════════════════════════
+  const { normalizeKeywords: radNormKw } = radancyModule;
+  if (JSON.stringify(radNormKw([' intern ', 'intern', '', 3, 'co-op'])) === '["intern","co-op"]' && radNormKw(undefined).length === 0) pass('radancy.normalizeKeywords() trims, dedupes and drops non-strings');
+  else fail(`radancy.normalizeKeywords() = ${JSON.stringify(radNormKw([' intern ', 'intern', '', 3, 'co-op']))}`);
+
+  // Fake fragment server: board of `board` jobs; per-term pages from `byTerm`.
+  const kwSection = (total, pages, ids) => `<section id="search-results" data-total-results="${total}" data-total-pages="${pages}">${ids.map(rowFor).join('')}</section>`;
+  const kwCtx = (board, byTerm, extra = {}) => {
+    const calls = [];
+    return {
+      calls,
+      sleep: async () => {},
+      fetchJson: async (url) => {
+        const sp = new URL(url).searchParams;
+        const kw = sp.get('Keywords');
+        const page = Number(sp.get('CurrentPage'));
+        calls.push({ kw, page });
+        if (kw === '') return { results: kwSection(board, Math.ceil(board / 100), [1, 2, 3]) };
+        const t = byTerm[kw];
+        if (t instanceof Error) throw t;
+        if (!t) return { results: '' };
+        const ids = t.pages[page - 1] || [];
+        return { results: ids.length ? kwSection(t.total, t.pages.length, ids) : '' };
+      },
+      fetchText: async () => { throw new Error('fetchText must not run in keyword mode'); },
+      ...extra,
+    };
+  };
+  const kwEntry = (more = {}) => ({ name: 'UHG', careers_url: 'https://careers.unitedhealthgroup.com/search-jobs', keywords: ['intern', 'summer associate'], keyword_min_total: 400, ...more });
+
+  {
+    const ctx = kwCtx(6408, {
+      intern: { total: 3, pages: [[901, 902], [903]] },
+      'summer associate': { total: 2, pages: [[902, 904]] },
+    });
+    const jobs = await radancy.fetch(kwEntry(), ctx);
+    if (jobs.length === 4 && jobs.map((j) => j.title).join(',') === 'T901,T902,T903,T904') pass('radancy keyword mode walks each term and merges in term order, deduped by job id');
+    else fail(`radancy keyword merge = ${JSON.stringify(jobs.map((j) => j.title))}`);
+    const ks = jobs.keywordSearch;
+    if (ks && ks.mode === 'keywords' && ks.terms === 2 && ks.boardTotal === 6408 && ks.perTerm.intern === 3 && ks.perTerm['summer associate'] === 2) pass('radancy keyword mode marks jobs.keywordSearch {mode, terms, boardTotal, perTerm}');
+    else fail(`radancy keywordSearch = ${JSON.stringify(ks)}`);
+    if (!jobs.truncated) pass('radancy keyword mode: a fully walked term is not truncated');
+    else fail('radancy keyword mode wrongly marked truncated');
+    if (ctx.calls.some((c) => c.kw === 'summer associate')) pass('radancy keyword mode sends a multi-word term unquoted (quoted phrases return 0 live)');
+    else fail(`radancy keyword calls = ${JSON.stringify(ctx.calls)}`);
+    if (jobs[0].company === 'UHG' && jobs[0].url === 'https://careers.unitedhealthgroup.com/job/c/s/1/901') pass('radancy keyword mode stamps company and absolute URL');
+    else fail(`radancy keyword job[0] = ${JSON.stringify(jobs[0])}`);
+  }
+
+  // Small board (≤ keyword_min_total) keeps the full read: no keywordSearch, no term queries.
+  {
+    const ctx = kwCtx(150, { intern: { total: 1, pages: [[901]] } });
+    const jobs = await radancy.fetch(kwEntry(), ctx);
+    if (!jobs.keywordSearch && jobs.length === 3 && ctx.calls.every((c) => c.kw === '')) pass('radancy keyword mode: a board at or below keyword_min_total keeps the full read');
+    else fail(`radancy small board: ${jobs.length} jobs, marker=${JSON.stringify(jobs.keywordSearch)}, calls=${JSON.stringify(ctx.calls)}`);
+  }
+
+  // A term whose walk is cut by max_pages marks jobs.truncated.
+  {
+    const ctx = kwCtx(6408, { intern: { total: 5, pages: [[901, 902], [903, 904], [905]] }, 'summer associate': { total: 0, pages: [] } });
+    const warnings = [];
+    console.error = (m) => warnings.push(String(m));
+    let jobs;
+    try { jobs = await radancy.fetch(kwEntry({ max_pages: 2 }), ctx); } finally { console.error = realConsoleError; }
+    if (jobs.truncated === true && jobs.length === 4 && /keyword "intern" truncated at 4 of 5/.test(warnings.join(' '))) pass('radancy keyword mode marks jobs.truncated when a term walk is capped');
+    else fail(`radancy capped term: truncated=${jobs?.truncated} len=${jobs?.length} warn=${warnings.join(' ')}`);
+  }
+
+  // One failing term: keep the others, mark truncated. All failing: throw.
+  {
+    const ctx = kwCtx(6408, { intern: new Error('blip'), 'summer associate': { total: 1, pages: [[904]] } });
+    const warnings = [];
+    console.error = (m) => warnings.push(String(m));
+    let jobs;
+    try { jobs = await radancy.fetch(kwEntry(), ctx); } finally { console.error = realConsoleError; }
+    if (jobs.length === 1 && jobs.truncated === true && jobs.keywordSearch?.perTerm.intern === 0) pass('radancy keyword mode keeps other terms when one fails and marks truncated');
+    else fail(`radancy one failing term: len=${jobs?.length} truncated=${jobs?.truncated}`);
+    let allErr = null;
+    console.error = () => {};
+    try { await radancy.fetch(kwEntry(), kwCtx(6408, { intern: new Error('down'), 'summer associate': new Error('down2') })); } catch (err) { allErr = err; } finally { console.error = realConsoleError; }
+    if (allErr?.message === 'down') pass('radancy keyword mode throws when every term query fails');
+    else fail(`radancy all terms failing: ${allErr ? allErr.message : 'no throw'}`);
+  }
+
+  // Probe unusable (fragment throws) → today's full read via the HTML walk.
+  {
+    let textCalls = 0;
+    const ctx = { sleep: async () => {}, fetchJson: async () => { throw new Error('no fragment'); }, fetchText: async () => (textCalls++ === 0 ? html : '<html></html>') };
+    const jobs = await radancy.fetch(kwEntry({ name: 'Munich Re', careers_url: 'https://careers.munichre.com/en/search-jobs' }), ctx);
+    if (jobs.length === 2 && !jobs.keywordSearch && textCalls > 0) pass('radancy keyword mode falls back to the full read when the fragment endpoint is unusable');
+    else fail(`radancy keyword probe fallback: ${jobs.length} jobs, marker=${JSON.stringify(jobs.keywordSearch)}`);
+  }
+
+  // A health probe (ctx.maxPages) and an entry without keywords never enter keyword mode.
+  {
+    const ctx = kwCtx(6408, { intern: { total: 1, pages: [[901]] } });
+    ctx.maxPages = 1;
+    const jobs = await radancy.fetch(kwEntry(), ctx);
+    const ctx2 = kwCtx(6408, { intern: { total: 1, pages: [[901]] } });
+    const jobs2 = await radancy.fetch(kwEntry({ keywords: undefined }), ctx2);
+    if (!jobs.keywordSearch && !jobs2.keywordSearch && ctx.calls.every((c) => c.kw === '') && ctx2.calls.every((c) => c.kw === '')) pass('radancy keyword mode is skipped for health probes and entries without keywords');
+    else fail(`radancy keyword skip: ${JSON.stringify(ctx.calls)} / ${JSON.stringify(ctx2.calls)}`);
+  }
+
+  // The no-keyword fragment URL is unchanged (Keywords stays empty).
+  if (new URL(buildFragmentUrl('https://x.example/search-jobs', 1)).searchParams.get('Keywords') === '' && new URL(buildFragmentUrl('https://x.example/search-jobs', 1, 100, 'intern')).searchParams.get('Keywords') === 'intern') pass('radancy.buildFragmentUrl() keeps Keywords empty by default and carries a term when given');
+  else fail('radancy.buildFragmentUrl() Keywords handling wrong');
 } catch (e) {
   fail(`radancy provider tests crashed: ${e.message}`);
 }

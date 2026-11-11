@@ -15,8 +15,11 @@
 import { BROWSER_LIKE_USER_AGENT } from './_http.mjs';
 import { decodeEntities } from './_html-entities.mjs';
 
-// ~20 postings/page → 30 pages covers 600 postings; tenants bigger than that
-// are rare on iCIMS and a reverse scan only needs the fresh slice anyway.
+// Page cap per search. Tenants show 20–50 postings/page (Emcor and BrightSpring
+// show 50, 2026-11-11), so 30 pages is 600–1,500 postings. Boards bigger than
+// that (Emcor 31 pages, BrightSpring 41) are read through keyword mode below
+// when the caller passes entry.keywords; without keywords the cap tags the
+// result icimsTruncated.
 const ICIMS_MAX_PAGES = 30;
 // Same per-tenant courtesy delay as workday.mjs — only multi-page tenants pay it.
 const INTER_PAGE_DELAY_MS = 250;
@@ -48,6 +51,13 @@ function resolveOrigin(entry) {
 
 // in_iframe=1 selects the lighter portal-only markup; pr is the 0-based page.
 const searchUrl = (origin, page) => `${origin}/jobs/search?ss=1&pr=${page}&in_iframe=1`;
+// The same search page filtered by the portal's own keyword box
+// (`searchKeyword=`, verified live 2026-11-11 on Emcor: unfiltered 31 pages,
+// "intern" 20 hits on 1 page, a nonsense word 0). The portal's default
+// relation is keyword_all, so a multi-word term ANDs its words
+// ("early career" 4 hits vs "early" 20 / "career" 46) and is sent as-is.
+const keywordUrl = (origin, term, page) =>
+  `${origin}/jobs/search?ss=1&searchKeyword=${encodeURIComponent(term)}&pr=${page}&in_iframe=1`;
 
 /**
  * Parse one iCIMS search-results page. Exported for unit tests.
@@ -100,6 +110,114 @@ export function parseIcimsSearchPage(html, origin, companyName) {
   return jobs;
 }
 
+/**
+ * Read "Page X of N" from an iCIMS search page's results header; null when
+ * the page carries no pager (no results, or a layout we do not know).
+ * Exported for unit tests.
+ * @param {string} html
+ * @returns {number|null}
+ */
+export function parseIcimsPageCount(html) {
+  const m = String(html || '').match(/\bPage\s+\d[\d,]*\s+of\s+(\d[\d,]*)/i);
+  if (!m) return null;
+  const n = Number(m[1].replace(/,/g, ''));
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/** Normalise entry.keywords to a de-duplicated list of non-empty terms. @param {unknown} raw */
+export function normalizeKeywords(raw) {
+  const list = Array.isArray(raw) ? raw : typeof raw === 'string' ? [raw] : [];
+  const out = [];
+  for (const k of list) {
+    if (typeof k !== 'string') continue;
+    const t = k.trim();
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out;
+}
+
+// Walk the result pages of one search (urlFor(page) builds the page URL).
+// Stops on an empty page, on a page that repeats the previous first posting
+// (tenants that serve the last page again for an out-of-range pr), at the
+// pager's last page when `usePager` is set, or at ICIMS_MAX_PAGES — the only
+// stop that means "capped".
+async function crawl(entry, origin, ctx, urlFor, { usePager = false } = {}) {
+  const jobs = [];
+  let prevFirstUrl = null;
+  let reachedEnd = false;
+  for (let pageNum = 0; pageNum < ICIMS_MAX_PAGES; pageNum++) {
+    if (pageNum > 0) await sleep(INTER_PAGE_DELAY_MS, ctx);
+    const html = await ctx.fetchText(urlFor(pageNum), { headers: HEADERS, redirect: 'error' });
+    const pageJobs = parseIcimsSearchPage(html, origin, entry.name);
+    if (pageJobs.length === 0) { reachedEnd = true; break; } // past the last page
+    if (pageJobs[0].url === prevFirstUrl) { reachedEnd = true; break; }
+    prevFirstUrl = pageJobs[0].url;
+    jobs.push(...pageJobs);
+    if (usePager) {
+      const pages = parseIcimsPageCount(html);
+      if (pages !== null && pageNum + 1 >= pages) { reachedEnd = true; break; }
+    }
+  }
+  return { jobs, capped: !reachedEnd };
+}
+
+// The whole-board read (no keywords): unchanged behaviour, including the
+// icimsTruncated tag when the page cap stops it. Exhausting the cap silently
+// would drop every later posting and look identical to a complete board —
+// the same failure mode the Workday truncation tag exists to prevent.
+async function fetchFull(entry, origin, ctx) {
+  const { jobs, capped } = await crawl(entry, origin, ctx, (page) => searchUrl(origin, page));
+  if (capped) jobs.icimsTruncated = true;
+  return jobs;
+}
+
+// Board size from the pager (see fetch). null = pager unreadable but the
+// board has cards; 0 = no cards on page 0.
+async function readBoardTotal(entry, origin, ctx) {
+  const first = await ctx.fetchText(searchUrl(origin, 0), { headers: HEADERS, redirect: 'error' });
+  const perPage = parseIcimsSearchPage(first, origin, entry.name).length;
+  if (perPage === 0) return 0;
+  const pages = parseIcimsPageCount(first);
+  if (pages === null) return null;
+  if (pages === 1) return perPage;
+  await sleep(INTER_PAGE_DELAY_MS, ctx);
+  const last = await ctx.fetchText(searchUrl(origin, pages - 1), { headers: HEADERS, redirect: 'error' });
+  const lastCount = parseIcimsSearchPage(last, origin, entry.name).length;
+  // An unreadable last page still leaves a sound lower bound.
+  return (pages - 1) * perPage + (lastCount || 1);
+}
+
+// One keyword search per term, merged in term order then page order and
+// de-duplicated by posting URL (it carries the iCIMS job id). The array
+// carries keywordSearch for the caller; a term that hits the page cap marks
+// the whole result truncated. The portal search matches words anywhere in a
+// posting ("intern" also finds "Internal Lead Generator"), so the result is a
+// superset that the normal title filters narrow later.
+async function fetchByKeywords(entry, origin, ctx, terms, boardTotal) {
+  const jobs = [];
+  const seen = new Set();
+  const perTerm = {};
+  let truncated = false;
+  for (let i = 0; i < terms.length; i++) {
+    if (i > 0) await sleep(INTER_PAGE_DELAY_MS, ctx);
+    const term = terms[i];
+    const r = await crawl(entry, origin, ctx, (page) => keywordUrl(origin, term, page), { usePager: true });
+    perTerm[term] = r.jobs.length;
+    if (r.capped) truncated = true;
+    for (const job of r.jobs) {
+      if (seen.has(job.url)) continue;
+      seen.add(job.url);
+      jobs.push(job);
+    }
+  }
+  Object.defineProperty(jobs, 'keywordSearch', {
+    value: { mode: 'keywords', terms: terms.length, boardTotal, perTerm },
+    enumerable: true, writable: true, configurable: true,
+  });
+  if (truncated) jobs.truncated = true;
+  return jobs;
+}
+
 /** @type {Provider} */
 export default {
   id: 'icims',
@@ -112,26 +230,29 @@ export default {
   async fetch(entry, ctx) {
     const origin = resolveOrigin(entry);
     if (!origin) throw new Error(`icims: cannot derive portal origin for ${entry.name}`);
-    const all = [];
-    let prevFirstUrl = null;
-    // Distinguishes "walked the whole board" from "stopped at the page cap".
-    // Exhausting the cap silently would drop every later posting and look
-    // identical to a complete board — the same failure mode the Workday
-    // truncation tag exists to prevent.
-    let reachedEnd = false;
-    for (let pageNum = 0; pageNum < ICIMS_MAX_PAGES; pageNum++) {
-      if (pageNum > 0) await sleep(INTER_PAGE_DELAY_MS, ctx);
-      const html = await ctx.fetchText(searchUrl(origin, pageNum), { headers: HEADERS, redirect: 'error' });
-      const pageJobs = parseIcimsSearchPage(html, origin, entry.name);
-      if (pageJobs.length === 0) { reachedEnd = true; break; } // past the last page
-      // Some tenants serve the last real page again for an out-of-range pr
-      // instead of an empty one — a repeated first URL means we're looping.
-      if (pageJobs[0].url === prevFirstUrl) { reachedEnd = true; break; }
-      prevFirstUrl = pageJobs[0].url;
-      all.push(...pageJobs);
+    const terms = normalizeKeywords(entry.keywords);
+    // No terms, or a health probe (ctx.maxPages: is the board live?): the
+    // whole-board read exactly as before keyword mode existed.
+    if (!terms.length || (Number.isInteger(ctx?.maxPages) && ctx.maxPages > 0)) return fetchFull(entry, origin, ctx);
+
+    // keyword_min_total keeps small boards on the full read. iCIMS shows no
+    // result count, only the pager ("Search Results Page 1 of 31") and a fixed
+    // number of cards per page, so the size is read from page 0's pager plus
+    // the last page: (pages - 1) × cards-per-page + cards on the last page.
+    // A board with no readable pager but with cards counts as bigger than the
+    // threshold (same rule as successfactors' missing count); a board with no
+    // cards at all is empty and stays on the full read.
+    const minTotal = Number.isInteger(entry.keyword_min_total) && entry.keyword_min_total > 0 ? entry.keyword_min_total : null;
+    let boardTotal = null;
+    if (minTotal !== null) {
+      boardTotal = await readBoardTotal(entry, origin, ctx);
+      if (boardTotal === 0 || (boardTotal !== null && boardTotal <= minTotal)) {
+        await sleep(INTER_PAGE_DELAY_MS, ctx);
+        return fetchFull(entry, origin, ctx);
+      }
+      await sleep(INTER_PAGE_DELAY_MS, ctx);
     }
-    if (!reachedEnd) all.icimsTruncated = true;
-    return all;
+    return fetchByKeywords(entry, origin, ctx, terms, boardTotal);
   },
 
   /**

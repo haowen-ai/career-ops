@@ -76,7 +76,7 @@ test('helpers: total parsing, keyword normalisation, per-term config', () => {
   assert.equal(new URLSearchParams(termConfig(cfg, 'co-op').searchQuery).get('q'), 'co-op');
   assert.equal(new URLSearchParams(termConfig(cfg, '"early career"').searchQuery).get('q'), '"early career"');
   assert.equal(new URLSearchParams(t.searchQuery).get('locationsearch'), 'United States');
-  assert.equal(t.keywords, 'summer analyst');
+  assert.equal(t.keywords, '"summer analyst"', 'CSB keywords get the same quoted phrase (Aramark 11/11)');
 });
 
 test('keywords absent / empty / false → full fetch exactly as today', async () => {
@@ -357,4 +357,178 @@ test('"Job Family" / "Job Family Group" labels count as preferred facets', () =>
     const json = { facets: { map: { customfield1: [{ name: 'Campus Recruiting', count: 2 }], customfield2: [{ name: 'Students & Graduates', count: 40 }] } } };
     assert.equal(mod.pickStudentFacet(json, fields).name, 'customfield2', label);
   }
+});
+
+// ── 2026-11-11 scan-coverage fixes (Aramark, Under Armour, Compass, Edison) ──
+
+test('tile-layout count: jobRecordsFound in the page script is the board total', async () => {
+  const page = '<script>j2w.SearchResults.init({ apiEndpoint: "tile-search-results", jobRecordsPerPage: parseInt("10"), jobRecordsFound: parseInt("217") });</script>';
+  assert.equal(parseRmkTotal(page), 217);
+  // A small board stated this way now stays on the full fetch (Edison: 217 ≤ 400).
+  const calls = [];
+  const ctx = {
+    fetchText: async (url) => {
+      calls.push(url);
+      const u = new URL(url);
+      if (u.pathname === '/search/') return page.replace('217', '3');
+      if (u.searchParams.get('q') !== null) throw new Error('no keyword query on a small board');
+      const start = Number(u.searchParams.get('startrow'));
+      return [1, 2, 3].slice(start, start + 10).map((id) => tile(id, `Role ${id}`)).join('');
+    },
+    fetchJson: async () => { throw new Error('RMK only'); },
+  };
+  const jobs = await sf.fetch({ name: 'E', careers_url: 'https://apply.e.example', keywords: ['intern'], keyword_min_total: 400 }, ctx);
+  assert.equal(jobs.length, 3);
+  assert.equal(jobs.keywordSearch, undefined);
+});
+
+/**
+ * In-memory CSB tenant (empty tile shell). `byKeywords` maps the exact body
+ * keywords to ids; `facetPage` adds the facetFields script; `facetJobs` maps
+ * "<locale>|<field>=<value>" to ids (counts and filtered crawls come from it).
+ */
+function csbSite({ locales = ['en_US'], byKeywords = {}, facetPage = false, facetJobs = {}, totals = {} }) {
+  const bodies = [];
+  const links = locales.map((l) => `<a href="/search/?q=&amp;locale=${l}">${l}</a>`).join('');
+  const script = facetPage
+    ? '<script>var facetFields = []; facetFields.push( { fieldId:"department", label:"Career Area" }) facetFields.push( { fieldId:"jobLocationCity", label:"City" }) resultStyles.searchFacet.facetFields = facetFields; var jobResultsCardFields = []; jobResultsCardFields.push( { fieldId: "brand", label: "Brand", showLabel: true });</script>'
+    : '';
+  const ctx = {
+    fetchText: async (url) => (new URL(url).pathname.startsWith('/tile-search-results/') ? '<!DOCTYPE html>' : `<html>${links}${script}</html>`),
+    fetchJson: async (url, opts) => {
+      const body = JSON.parse(opts.body);
+      bodies.push(body);
+      if (body.facetingOnly) {
+        const values = {};
+        for (const [k, ids] of Object.entries(facetJobs)) {
+          const [loc, fv] = k.split('|');
+          if (loc !== body.locale) continue;
+          const [field, value] = fv.split('=');
+          (values[field] ??= []).push({ name: value, count: ids.length });
+        }
+        return { totalJobs: totals[body.locale] ?? 0, facetFields: body.facetFields.map((name) => ({ name, values: values[name] || [{ name: 'Food Service', count: 99 }] })), jobSearchResult: [] };
+      }
+      let ids;
+      if (body.facetFilters) {
+        ids = [];
+        for (const [field, vals] of Object.entries(body.facetFilters)) for (const v of vals) ids.push(...(facetJobs[`${body.locale}|${field}=${v}`] || []));
+      } else ids = byKeywords[body.keywords] || [];
+      const page = ids.slice(body.pageNumber * 10, body.pageNumber * 10 + 10);
+      return { totalJobs: ids.length, jobSearchResult: page.map((id) => ({ response: { id, unifiedStandardTitle: `Job ${id}`, urlTitle: `Job-${id}` } })) };
+    },
+  };
+  return { ctx, bodies };
+}
+
+test('Aramark: a multi-word term goes to the CSB API as a quoted phrase, so it no longer hits max_jobs', async () => {
+  const everything = Array.from({ length: 60 }, (_, i) => `w${i}`);
+  const { ctx, bodies } = csbSite({ byKeywords: { 'early career': everything, '"early career"': ['e1', 'e2'], intern: ['i1', 'e1'] } });
+  const jobs = await sf.fetch({ name: 'Aramark', careers_url: 'https://aramark.example', keywords: ['intern', 'early career'], keyword_min_total: 400, max_jobs: 50 }, ctx);
+  assert.deepEqual(bodies.filter((b) => !b.facetingOnly).map((b) => b.keywords), ['intern', '"early career"']);
+  assert.deepEqual(jobs.map((j) => j.title), ['Job i1', 'Job e1', 'Job e2']);
+  assert.equal(jobs.truncated, undefined);
+  assert.deepEqual(jobs.keywordSearch.perTerm, { intern: 2, 'early career': 2 });
+});
+
+test('CSB student facet: values read with facetingOnly per locale, only locales with hits crawled, facetFilters in the body', async () => {
+  const early = Array.from({ length: 12 }, (_, i) => `ec${i}`);
+  const { ctx, bodies } = csbSite({
+    locales: ['en_US', 'de_DE', 'fr_CA'],
+    facetPage: true,
+    totals: { en_US: 6897, de_DE: 224, fr_CA: 70 },
+    facetJobs: { 'en_US|department=Early Careers': early, 'en_US|department=Food Service': ['f1', 'f2', 'f3'], 'de_DE|department=Food Service': ['f9'] },
+    byKeywords: { intern: ['x'] },
+  });
+  const jobs = await sf.fetch({ name: 'Aramark', careers_url: 'https://aramark.example', keywords: ['intern', 'student'], keyword_min_total: 400 }, ctx);
+  assert.equal(jobs.length, 12);
+  assert.equal(jobs[0].url, 'https://aramark.example/job/Job-ec0/ec0-en_US');
+  assert.deepEqual(jobs.keywordSearch, {
+    mode: 'facet',
+    facet: { name: 'department', label: 'Career Area', values: ['Early Careers'] },
+    terms: 2,
+    boardTotal: 6897 + 224 + 70,
+    perTerm: { 'Early Careers': 12 },
+  });
+  const faceting = bodies.filter((b) => b.facetingOnly);
+  assert.deepEqual(faceting.map((b) => b.locale), ['de_DE', 'en_US', 'fr_CA'], 'one faceting request per page locale');
+  assert.deepEqual(faceting[0].facetFields, ['department', 'jobLocationCity'], 'fields from the facetFields script, not the result-card fields');
+  const crawl = bodies.filter((b) => !b.facetingOnly);
+  assert.ok(crawl.every((b) => b.locale === 'en_US' && b.keywords === '' && JSON.stringify(b.facetFilters) === '{"department":["Early Careers"]}'));
+  assert.deepEqual(crawl.map((b) => b.pageNumber), [0, 1]);
+});
+
+test('CSB: no student facet value, or facet: false → keyword search (no facetFilters)', async () => {
+  const opts = { facetPage: true, facetJobs: { 'en_US|department=Food Service': ['f1'] }, byKeywords: { intern: ['i1'] } };
+  const a = csbSite(opts);
+  const jobs = await sf.fetch({ name: 'C', careers_url: 'https://c.example', keywords: ['intern'], keyword_min_total: 400 }, a.ctx);
+  assert.equal(jobs.keywordSearch.mode, 'keywords');
+  assert.deepEqual(jobs.map((j) => j.title), ['Job i1']);
+  const b = csbSite({ ...opts, facetJobs: { 'en_US|department=Early Careers': ['e1'] } });
+  const off = await sf.fetch({ name: 'C', careers_url: 'https://c.example', keywords: ['intern'], keyword_min_total: 400, facet: false }, b.ctx);
+  assert.equal(off.keywordSearch.mode, 'keywords');
+  assert.ok(b.bodies.every((x) => !x.facetingOnly && !x.facetFilters));
+});
+
+/** Under Armour-like tile tenant with a category page; past the end it serves a fixed unrelated block. */
+function categorySite({ catIds, boardCount = 724, statedCount = catIds.length }) {
+  const calls = [];
+  const junk = [9001, 9002, 9003, 9004, 9005];
+  const ctx = {
+    fetchText: async (url) => {
+      calls.push(url);
+      const u = new URL(url);
+      if (u.pathname === '/search/') return `<script>j2w.SearchResults.init({ jobRecordsPerPage: parseInt("10"), jobRecordsFound: parseInt("${boardCount}") });</script>`;
+      if (u.pathname === '/go/Internships/9635400/') return `<script>j2w.SearchResults.init({ apiEndpoint: "tile-search-results/category/9635400", jobRecordsPerPage: parseInt("10"), jobRecordsFound: parseInt("${statedCount}") });</script>`;
+      if (u.pathname === '/tile-search-results/category/9635400/') {
+        const start = Number(u.searchParams.get('startrow'));
+        const page = catIds.slice(start, start + 10);
+        return (page.length ? page : junk).map((id) => tile(id, `Role ${id}`)).join('');
+      }
+      throw new Error(`unexpected request ${url}`);
+    },
+    fetchJson: async () => { throw new Error('no CSB on a category page'); },
+  };
+  return { ctx, calls };
+}
+
+test('category careers_url (/go/<Name>/<id>/): resolved to the category tile endpoint', () => {
+  const cfg = resolveConfig({ name: 'UA', careers_url: 'https://careers.underarmour.com/go/Internships/9635400/' });
+  assert.equal(cfg.tileApi, 'https://careers.underarmour.com/tile-search-results/category/9635400/');
+  assert.equal(cfg.searchPage, 'https://careers.underarmour.com/search/');
+  assert.deepEqual(cfg.category, { id: '9635400', name: 'Internships', page: 'https://careers.underarmour.com/go/Internships/9635400/' });
+  const brand = resolveConfig({ name: 'B', careers_url: 'https://careers.x.example/Brand/go/Early-Careers/42/' });
+  assert.equal(brand.tileApi, 'https://careers.x.example/Brand/tile-search-results/category/42/');
+  assert.equal(brand.category.name, 'Early Careers');
+  assert.equal(resolveConfig({ name: 'Z', careers_url: 'https://jobs.zf.com' }).category, null);
+});
+
+test('Under Armour: category page in keyword mode → read as the site filter, stops at its stated count, no keyword queries', async () => {
+  const catIds = Array.from({ length: 21 }, (_, i) => 100 + i);
+  const { ctx, calls } = categorySite({ catIds });
+  const jobs = await sf.fetch({ name: 'UA', careers_url: 'https://careers.underarmour.com/go/Internships/9635400/', keywords: ['intern', 'co-op'], keyword_min_total: 400 }, ctx);
+  assert.deepEqual(jobs.map((j) => j.title), catIds.map((id) => `Role ${id}`), 'the past-the-end block (9001…) is not read');
+  assert.equal(jobs.truncated, undefined);
+  assert.deepEqual(jobs.keywordSearch, {
+    mode: 'facet',
+    facet: { name: 'category', label: 'Category', values: ['Internships'] },
+    terms: 2,
+    boardTotal: 724,
+    perTerm: { Internships: 21 },
+  });
+  assert.ok(!calls.some((u) => new URL(u).searchParams.has('q')));
+});
+
+test('category page without keywords (scan.mjs) → category endpoint, stated count, no CSB fallback even when empty', async () => {
+  const site = categorySite({ catIds: [1, 2, 3] });
+  const jobs = await sf.fetch({ name: 'UA', careers_url: 'https://careers.underarmour.com/go/Internships/9635400/' }, site.ctx);
+  assert.deepEqual(jobs.map((j) => j.title), ['Role 1', 'Role 2', 'Role 3']);
+  assert.equal(jobs.keywordSearch, undefined);
+  const empty = categorySite({ catIds: [], statedCount: 0 });
+  // stated count 0: no tile request at all (the endpoint would serve the filler block), no CSB request
+  const none = await sf.fetch({ name: 'UA', careers_url: 'https://careers.underarmour.com/go/Internships/9635400/' }, empty.ctx);
+  assert.equal(none.length, 0);
+  assert.deepEqual(empty.calls, ['https://careers.underarmour.com/go/Internships/9635400/']);
+  // a filler tile on the last real page is trimmed to the stated count
+  const short = categorySite({ catIds: [1, 2, 3], statedCount: 2 });
+  assert.deepEqual((await sf.fetch({ name: 'UA', careers_url: 'https://careers.underarmour.com/go/Internships/9635400/' }, short.ctx)).map((j) => j.title), ['Role 1', 'Role 2']);
 });

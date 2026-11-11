@@ -173,7 +173,9 @@ test('regression: hostname allowlist — a host outside it throws before any req
     await assert.rejects(() => ms.fetch({ name: 'X', careers_url }, ctx), /not in the allowlist/);
     assert.equal(ctx.calls.length, 0, careers_url);
   }
-  assert.deepEqual([...mod.ALLOWED_HOSTS], ['careers.lennar.com']);
+  assert.deepEqual([...mod.ALLOWED_HOSTS], ['careers.lennar.com', 'www.seeacareerwithus.com']);
+  assert.deepEqual([...mod.JOBS_FEED_HOSTS], ['www.seeacareerwithus.com']);
+  assert.equal(resolveConfig(ENTRY).feed, false);
 });
 
 test('regression: positive results count with no parsable rows → parse error, not []', async () => {
@@ -187,4 +189,76 @@ test('regression: positive results count with no parsable rows → parse error, 
   // genuine zero and past-the-end stay empty
   assert.equal(parseResults(page(0, 1, 0), CFG).rows.length, 0);
   assert.equal(parseResults(page(0, 371, 363), CFG).rows.length, 0);
+});
+
+// ── "autojob" /api/jobs feed (www.seeacareerwithus.com, IKEA US) ──────────
+// Trimmed live response (2026-11-11: 3 of 125 rows, descriptions shortened).
+const FEED = JSON.stringify({
+  draw: null, recordsTotal: 125, recordsFiltered: 125,
+  data: [
+    { id: 125, job_id: '376912', name: 'Retail Carts Attendant Part-Time', description: '<h3>Why we will love you</h3>…', category: 'Customer Relations', country: 'United States', state: 'California', city: 'Burbank, California', url: 'https://ikea.avature.net/en_US/External/ApplicationMethods?jobId=376912', active: 1, posted_at: '2026-11-11T12:44:06.000000Z', location: 'Burbank, California', job_req: '376912' },
+    { id: 124, job_id: '366983', name: 'Food & Dishwashing Co-Worker (Part-Time)', description: '…', state: 'Wisconsin', city: 'Oak Creek, Wisconsin', active: 1, posted_at: '2026-11-10T12:44:06.000000Z', location: 'Oak Creek, Wisconsin' },
+    { id: 123, job_id: '368990', name: 'Seasonal Retail Store Associate Full Time', description: '…', state: 'Illinois', city: 'Gurnee, Illinois', active: 1, posted_at: '2026-11-10T12:44:06.000000Z', location: 'Gurnee, Illinois' },
+  ],
+  args: { empty: 'empty', orderby: 'posted_at desc', offset: null, limit: null },
+});
+const IKEA = { name: 'IKEA US', careers_url: 'https://www.seeacareerwithus.com/search-jobs' };
+
+test('feed host: one GET to /api/jobs, rows normalized to /details/{id}/{slug}', async () => {
+  const cfg = resolveConfig(IKEA);
+  assert.equal(cfg.feed, true);
+  assert.equal(mod.buildFeedUrl(cfg), 'https://www.seeacareerwithus.com/api/jobs?empty=empty');
+  const ctx = makeCtx([FEED]);
+  const real = console.error;
+  const warnings = [];
+  console.error = (m) => warnings.push(m);
+  let jobs;
+  try { jobs = await ms.fetch(IKEA, ctx); } finally { console.error = real; }
+  assert.equal(ctx.calls.length, 1);
+  assert.equal(ctx.calls[0].url, 'https://www.seeacareerwithus.com/api/jobs?empty=empty');
+  assert.equal(ctx.calls[0].opts.redirect, 'error');
+  assert.equal(jobs.length, 3);
+  assert.deepEqual(jobs[0], {
+    title: 'Retail Carts Attendant Part-Time',
+    url: 'https://www.seeacareerwithus.com/details/376912/Retail-Carts-Attendant-Part-Time',
+    company: 'IKEA US',
+    location: 'Burbank, California',
+    postedAt: Date.UTC(2026, 10, 11, 12, 44, 6),
+  });
+  assert.equal(jobs[1].url, 'https://www.seeacareerwithus.com/details/366983/Food---Dishwashing-Co-Worker--Part-Time-');
+  assert.equal(jobs[1].title, 'Food & Dishwashing Co-Worker (Part-Time)');
+  // fixture holds 3 of 125 → the shortfall is reported, not hidden
+  assert.match(warnings.join('\n'), /jobs feed gave 3 of 125/);
+});
+
+test('feed host: malformed rows skipped; inactive dropped; shape change throws; zero is empty', () => {
+  const cfg = resolveConfig(IKEA);
+  const body = { recordsTotal: 4, data: [
+    { job_id: 'abc', name: 'Bad id' },
+    { job_id: '1', name: '' },
+    { job_id: '2', name: 'Off', active: 0 },
+    { job_id: '3', name: 'IT Intern', city: 'Conshohocken', state: 'Pennsylvania', posted_at: 'garbage' },
+    { job_id: '3', name: 'Duplicate' },
+  ] };
+  const { rows } = mod.parseFeed(body, cfg);
+  assert.deepEqual(rows, [{ id: '3', title: 'IT Intern', url: 'https://www.seeacareerwithus.com/details/3/IT-Intern', location: 'Conshohocken, Pennsylvania' }]);
+  assert.throws(() => mod.parseFeed('<html>Maintenance</html>', cfg), /not JSON/);
+  assert.throws(() => mod.parseFeed({ error: 'x' }, cfg), /no data array/);
+  assert.throws(() => mod.parseFeed({ recordsTotal: 125, data: [{ jobId: 1, title: 'renamed' }] }, cfg), /reports 125 jobs but no job rows parsed/);
+  assert.deepEqual(mod.parseFeed({ recordsTotal: 0, data: [] }, cfg).rows, []);
+});
+
+test('msts jobs feed marks the result truncated when max_jobs cuts valid rows', async () => {
+  const feed = JSON.stringify({ recordsTotal: 2, data: [
+    { job_id: 1, name: 'Role One', location: 'A', active: 1 },
+    { job_id: 2, name: 'Role Two', location: 'B', active: 1 },
+  ] });
+  const ctx = { fetchText: async () => feed, sleep: async () => {} };
+  const { default: provider } = await import('../../providers/msts.mjs');
+  const cut = await provider.fetch({ name: 'IKEA US', careers_url: 'https://www.seeacareerwithus.com/search-jobs', max_jobs: 1 }, ctx);
+  assert.equal(cut.length, 1);
+  assert.equal(cut.truncated, true);
+  const full = await provider.fetch({ name: 'IKEA US', careers_url: 'https://www.seeacareerwithus.com/search-jobs' }, ctx);
+  assert.equal(full.length, 2);
+  assert.equal(full.truncated, undefined);
 });
