@@ -441,6 +441,19 @@ try {
     else fail(`oraclecloud max_pages raise: default ${capped.length}, raised ${raised.length}`);
   }
 
+  // ── company-owned host (explicit list) ──────────────────────────────
+  {
+    const dell = resolveSite({ name: 'Dell', api: 'https://enterpriseplatform.dell.com/hcmUI/CandidateExperience/en/sites/CX_1001/jobs' });
+    if (dell && dell.siteNumber === 'CX_1001' && hostOf(buildApiUrl(dell, 0)) === 'enterpriseplatform.dell.com') pass('oraclecloud: the listed company host enterpriseplatform.dell.com resolves like a tenant host');
+    else fail(`oraclecloud vanity host: ${JSON.stringify(dell)}`);
+    const bad = ['https://enterpriseplatform.dell.com.evil.example/hcmUI/CandidateExperience/en/sites/CX_1001/jobs',
+      'https://evil.example/hcmUI/CandidateExperience/en/sites/CX_1001/jobs?h=enterpriseplatform.dell.com',
+      'https://jobs.dell.com/hcmUI/CandidateExperience/en/sites/CX_1001/jobs',
+      'http://enterpriseplatform.dell.com/hcmUI/CandidateExperience/en/sites/CX_1001/jobs'];
+    if (bad.every((u) => resolveSite({ name: 'X', api: u }) === null)) pass('oraclecloud: look-alike, unlisted and non-HTTPS hosts are still refused');
+    else fail('oraclecloud vanity host list accepted a host it must refuse');
+  }
+
 } catch (e) {
   fail(`oraclecloud provider tests crashed: ${e.message}`);
 }

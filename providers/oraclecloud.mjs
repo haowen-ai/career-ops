@@ -55,6 +55,11 @@ import { BROWSER_LIKE_USER_AGENT, fetchJsonWithRetry } from './_http.mjs';
 // so this stays a host pin and never becomes a wildcard apex match.
 const ORACLE_HOST_RE = /^[a-z0-9-]+\.fa\.(?:[a-z0-9-]+\.)?(?:ocs\.)?oraclecloud(?:[1-9][0-9]?)?\.com$/i;
 
+// Company-owned hosts that serve the same Candidate Experience site and REST
+// API with no oraclecloud.com host behind a public name (Dell fronts it with
+// its own domain). An explicit list, never a pattern.
+const VANITY_HOSTS = new Set(['enterpriseplatform.dell.com']);
+
 const PAGE_SIZE = 200;
 const MAX_PAGES = 25;             // default safety cap (~5000 jobs); entry `max_pages` overrides
 const RETRY_POLICY = { retries: 3 };
@@ -72,7 +77,7 @@ function assertOracleUrl(url) {
     throw new Error(`oraclecloud: invalid URL: ${url}`);
   }
   if (parsed.protocol !== 'https:') throw new Error(`oraclecloud: URL must use HTTPS: ${url}`);
-  if (!ORACLE_HOST_RE.test(parsed.hostname)) {
+  if (!ORACLE_HOST_RE.test(parsed.hostname) && !VANITY_HOSTS.has(parsed.hostname.toLowerCase())) {
     throw new Error(`oraclecloud: untrusted hostname "${parsed.hostname}" — must match *.fa[.<region>][.ocs].oraclecloud[1-99].com`);
   }
   return url;
@@ -110,7 +115,7 @@ export function resolveSite(entry) {
       continue;
     }
     if (parsed.protocol !== 'https:') continue;
-    if (!ORACLE_HOST_RE.test(parsed.hostname)) continue;
+    if (!ORACLE_HOST_RE.test(parsed.hostname) && !VANITY_HOSTS.has(parsed.hostname.toLowerCase())) continue;
 
     const segs = parsed.pathname.split('/').filter(Boolean);
     // Path shape: /hcmUI/CandidateExperience/<lang>/sites/<siteNumber>/...

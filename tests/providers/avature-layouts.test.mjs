@@ -166,7 +166,7 @@ test('fetch keeps a SearchJobsUS path and pages with the pager key (folderOffset
 test('fetch keeps a JobOpeningsUSA path (Enel) and the careers_url filter query (TotalEnergies)', async () => {
   const first = async (entry) => {
     const calls = [];
-    await avature.fetch(entry, { sleep: async () => {}, fetchText: async (url) => { calls.push(url); return ''; } });
+    await avature.fetch(entry, { sleep: async () => {}, fetchText: async (url) => { calls.push(url); return '<html><body>no results</body></html>'; } });
     return calls[0];
   };
   assert.equal(await first({ name: 'Enel', careers_url: 'https://jobs.enel.com/en_US/careers/JobOpeningsUSA' }), 'https://jobs.enel.com/en_US/careers/JobOpeningsUSA?jobOffset=0');
@@ -232,4 +232,14 @@ test('parseArticles reads <div class="article article--result"> rows (Enel, Tota
   assert.deepEqual(total.map((r) => [r.id, r.title, r.location]), [['86136', 'Sales Support Advisor', 'United Kingdom'], ['86140', 'Engineering Intern', 'United States / US']]);
   // nested --container / --actions classes are not row starts
   assert.equal(parseArticles(seRow(7), 'https://jobs.siemens-energy.com').length, 1);
+});
+
+test('an empty first page (bot challenge, e.g. AWS WAF HTTP 202) fails the list instead of reporting zero jobs', async () => {
+  const entry = { name: 'Delta Air Lines', provider: 'avature', careers_url: 'https://delta.avature.net/en_US/careers/SearchJobs' };
+  for (const body of ['', '   \n', null]) {
+    const ctx = { sleep: async () => {}, fetchText: async () => body };
+    await assert.rejects(() => avatureForRows.fetch(entry, ctx), /empty response \(bot challenge\) — needs a browser read/);
+  }
+  const waf = '<!DOCTYPE html><html><head><script>window.awsWafCookieDomainList = [];window.gokuProps = {};</script><script src="https://x.token.awswaf.com/x/challenge.js"></script></head><body><script>AwsWafIntegration.getToken()</script></body></html>';
+  await assert.rejects(() => avatureForRows.fetch(entry, { sleep: async () => {}, fetchText: async () => waf }), /AWS WAF challenge page \(bot challenge\) — needs a browser read/);
 });

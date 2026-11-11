@@ -291,6 +291,16 @@ export default {
         redirect: 'error',
         headers: { accept: 'text/html' },
       });
+      // A first page that is empty, or is the AWS WAF challenge shell (HTTP 202:
+      // no body, or a ~2 KB page that only loads challenge.js), is not a board
+      // with no jobs — that still renders its search page. Fail the list so the
+      // caller hands it to a browser read instead of reporting zero jobs.
+      if (offset === 0 && (typeof htmlText !== 'string' || !htmlText.trim())) {
+        throw new Error(`avature: ${entry.name}: empty response (bot challenge) — needs a browser read`);
+      }
+      if (offset === 0 && htmlText.length < 20000 && /AwsWafIntegration|awsWafCookieDomainList/.test(htmlText)) {
+        throw new Error(`avature: ${entry.name}: AWS WAF challenge page (bot challenge) — needs a browser read`);
+      }
       const parsed = parsePage(htmlText, cfg.origin);
       if (offset === 0 && parsed.length === 0 && typeof htmlText === 'string') {
         const links = countDetailLinks(htmlText);
