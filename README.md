@@ -2,6 +2,8 @@
 
 <p align="center">The open-source AI job search agent.</p>
 
+> **About this fork.** [haowen-ai/career-ops](https://github.com/haowen-ai/career-ops) is a personal, non-commercial fork of [career-ops](https://github.com/career-ops-hq/career-ops) by Santiago Fernández de Valderrama and contributors, used under its MIT [LICENSE](LICENSE). All credit for career-ops goes to the original authors. The career-ops name and logo belong to the original project ([TRADEMARK.md](TRADEMARK.md)); this fork is not affiliated with or endorsed by it. Changes here: site keyword search and student-role facets for more job-board providers, a shared company catalog (see "Company catalog (this fork)" below), and regular merges from upstream. The rest of this README is the original project's.
+
 <p align="center">
   <a href="README.md">English</a> |
   <a href="README.es.md">Español</a> |
