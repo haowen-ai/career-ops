@@ -395,7 +395,7 @@ export default {
   },
 
   async fetch(entry, ctx) {
-    const tenant = resolveTenant(entry);
+    let tenant = resolveTenant(entry);
     if (!tenant) {
       // Say which half is wrong: a malformed eightfold_host is silently
       // ignored by resolveTenant, which would otherwise read as a URL problem.
@@ -464,6 +464,14 @@ export default {
         // APIS ONCE rather than to give up: before this, every PCSX tenant read
         // as the WAF case (module header) and the board silently returned zero postings.
         if (api === 'v2' && page === 0 && status === 403 && mode === 'auto') {
+          // Fork: PCSX tenants usually need ?domain=. When the entry has none, read it
+          // from the /careers page (as eightfold_mode: pcsx does); an unreadable page
+          // falls back to upstream's domain-less probe.
+          if (!tenant.domain) {
+            try {
+              tenant = { ...tenant, domain: await resolvePcsxDomain(entry, tenant, ctx, { ...RETRY_POLICY, retries: 0 }) };
+            } catch { /* probe without a domain */ }
+          }
           let pcsxJson = null;
           try {
             pcsxJson = await request('pcsx');
@@ -736,14 +744,14 @@ export function parsePcsxResponse(json, tenant, companyName) {
  * @param {{host: string, domain: (string|null)}} tenant
  * @param {any} ctx
  */
-async function resolvePcsxDomain(entry, tenant, ctx) {
+async function resolvePcsxDomain(entry, tenant, ctx, policy = RETRY_POLICY) {
   if (tenant.domain) return tenant.domain;
   const pageUrl = assertEightfoldUrl(`https://${tenant.host}/careers`, brandedHost(entry));
   const html = await fetchTextWithRetry(
     /** @type {any} */ (ctx),
     pageUrl,
     { redirect: 'error', headers: { 'User-Agent': BROWSER_LIKE_USER_AGENT, Accept: 'text/html' } },
-    RETRY_POLICY,
+    policy,
   );
   const domain = extractDomainFromPage(html);
   if (!domain) throw new Error(`eightfold pcsx: ${entry.name}: no domain on ${pageUrl}; add ?domain=<domain> to careers_url`);

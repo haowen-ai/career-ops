@@ -117,6 +117,31 @@ test('fetch derives the domain from the careers page when the entry has none', a
   assert.equal(new URL(calls[1]).searchParams.get('domain'), 'acme.com');
 });
 
+test('auto mode: v2 403 then PCSX derives the domain from the careers page when the entry has none', async () => {
+  const { ctx, calls } = mockCtx({
+    v2: () => { throw http403(); },
+    pcsx: (u) => (u.searchParams.get('domain') === 'acme.com'
+      ? { status: 200, error: { message: '' }, data: { count: 1, positions: [{ id: 1, name: 'Only' }] } }
+      : (() => { const e = new Error('HTTP 422 Missing domain'); e.status = 422; throw e; })()),
+    page: '<div data-c="{&#34;domain&#34;: &#34;acme.com&#34;}"></div>',
+  });
+  const jobs = await ef.fetch({ name: 'Acme', careers_url: 'https://acme.eightfold.ai/careers' }, ctx);
+  assert.equal(jobs.length, 1);
+  assert.ok(calls.includes('https://acme.eightfold.ai/careers'));
+  assert.equal(new URL(calls.find((c) => c.includes('/api/pcsx/'))).searchParams.get('domain'), 'acme.com');
+});
+
+test('auto mode: an unreadable careers page still probes PCSX without a domain', async () => {
+  const { ctx, calls } = mockCtx({
+    v2: () => { throw http403(); },
+    pcsx: () => ({ status: 200, error: { message: '' }, data: { count: 1, positions: [{ id: 1, name: 'Only' }] } }),
+    page: '<html></html>',
+  });
+  const jobs = await ef.fetch({ name: 'Acme', careers_url: 'https://acme.eightfold.ai/careers' }, ctx);
+  assert.equal(jobs.length, 1);
+  assert.equal(new URL(calls.find((c) => c.includes('/api/pcsx/'))).searchParams.get('domain'), null);
+});
+
 test('fetch throws (no silent empty) when the page has no domain', async () => {
   const { ctx } = mockCtx({ v2: () => ({}), pcsx: () => ({}), page: '<html></html>' });
   await assert.rejects(ef.fetch({ name: 'Acme', careers_url: 'https://acme.eightfold.ai/careers', eightfold_mode: 'pcsx' }, ctx), /no domain/);
