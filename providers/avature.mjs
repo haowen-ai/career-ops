@@ -123,7 +123,8 @@ function parseLocation(block) {
     block.match(/class="[^"]*\blocation\b[^"]*"[^>]*>([\s\S]*?)<\/(?:span|div|li)>/i) ||
     block.match(/glyphicon-map-marker[\s\S]{0,80}?>([^<]{2,60})</i) ||
     // TotalEnergies: <li class="list-item list-item-jobCountry">United States / US</li>
-    block.match(/list-item-job(?:Location|City|Country)\b[^>]*>([\s\S]*?)<\/li>/i);
+    block.match(/list-item-job(?:Location|City|Country)\b[^>]*>([\s\S]*?)<\/li>/i) ||
+    block.match(/icon-address[^>]*><\/span>([^<]{2,80})</i);
   return m ? clean(m[1]) : '';
 }
 
@@ -139,7 +140,8 @@ export function parseArticles(htmlText, origin) {
   // opening tag to the next row's (or </article> for the <article> form). The
   // class must hold the exact `article--result` token: Siemens Energy nests
   // `article--result--container` / `--actions` inside each row.
-  const startRe = /<(article|div) class="(?:[^"]*\s)?article--result(?:\s[^"]*)?"/g;
+  // careers.avature.net renders `article--jobs` cards instead (upstream, 2026-09-28).
+  const startRe = /<(article|div) class="(?:[^"]*\s)?article--(?:result|jobs)(?:\s[^"]*)?"/g;
   const starts = [];
   let a;
   while ((a = startRe.exec(htmlText)) !== null) starts.push({ at: a.index, tag: a[1] });
@@ -158,15 +160,30 @@ export function parseArticles(htmlText, origin) {
     // anchor for tenants (e.g. Rohde & Schwarz) whose title link carries no
     // class. Share/mailto buttons url-encode the path (%2FJobDetail%2F) so they
     // never match the literal `/JobDetail/` and can't be mistaken for the title.
+    // Links are path-style `/JobDetail/<slug>/<id>`, `/FolderDetail/<slug>/<id>`
+    // or query-style `/JobDetail?jobId=<id>` (Macquarie, upstream #6477). An
+    // `article--jobs` card's class="link" anchor is a "View more" button, so its
+    // h3 header title anchor is tried first (upstream #4559).
     const urlM =
-      block.match(/<a[^>]*class="link"[^>]*href="([^"]*\/(?:Job|Folder)Detail\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/) ||
-      block.match(/<a[^>]*href="([^"]*\/(?:Job|Folder)Detail\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/);
+      block.match(/article__header__text__title[^>]*>\s*<a[^>]*href="([^"]*\/(?:Job|Folder)Detail[/?][^"]+)"[^>]*>([\s\S]*?)<\/a>/) ||
+      block.match(/<a[^>]*class="link"[^>]*href="([^"]*\/(?:Job|Folder)Detail[/?][^"]+)"[^>]*>([\s\S]*?)<\/a>/) ||
+      block.match(/<a[^>]*href="([^"]*\/(?:Job|Folder)Detail[/?][^"]+)"[^>]*>([\s\S]*?)<\/a>/);
     if (!urlM) continue;
     const title = clean(urlM[2]);
     if (!title) continue;
     let url = decodeEntities(urlM[1]);
-    if (!/^https?:\/\//i.test(url)) url = origin + (url.startsWith('/') ? url : '/' + url);
-    const idM = url.match(/\/(?:Job|Folder)Detail\/(?:[^/?#]*\/)?(\d+)/);
+    if (!/^https?:\/\//i.test(url)) {
+      // new URL resolves root-, path- and protocol-relative hrefs like a browser;
+      // a href it cannot resolve, or one with its own non-http scheme
+      // (javascript:, data:, mailto:), is dropped (upstream #6971).
+      try {
+        url = new URL(url, origin).href;
+      } catch {
+        continue;
+      }
+      if (!/^https?:\/\//i.test(url)) continue;
+    }
+    const idM = url.match(/\/(?:Job|Folder)Detail\/(?:[^/?#]*\/)?(\d+)/) || url.match(/\/JobDetail\?(?:[^#]*&)?jobId=(\d+)/i);
     out.push({
       id: idM ? idM[1] : url,
       title,
@@ -245,6 +262,28 @@ export function pagerOffsetParam(htmlText) {
   return best;
 }
 
+/**
+ * Upstream API (#4252): throws when a first page still carries posting-shaped
+ * JobDetail links but nothing parsed — a markup change, never an empty board.
+ * fetch() uses countDetailLinks for the same check (it also names pipelines).
+ * @param {string} html @param {string} url
+ */
+export function assertParsedSomething(html, url) {
+  if (!/\/JobDetail[/?][^"'\s]+/i.test(String(html ?? ''))) return;
+  throw new Error(
+    `avature: ${url} still contains JobDetail links but no article could be parsed — the listing markup changed`,
+  );
+}
+
+/**
+ * Upstream API (#4885): number of result cards on a page before parseArticles
+ * drops any. Same row-start rule as parseArticles.
+ * @param {string} htmlText
+ */
+export function countArticles(htmlText) {
+  return (String(htmlText ?? '').match(/<(?:article|div) class="(?:[^"]*\s)?article--(?:result|jobs)(?:\s[^"]*)?"/g) || []).length;
+}
+
 export function countDetailLinks(htmlText) {
   const jobs = (htmlText.match(/href="[^"]*\/(?:Job|Folder)Detail[/?][^"]*"/g) || []).length;
   const pipelines = (htmlText.match(/href="[^"]*\/PipelineDetail\/[^"]*"/g) || []).length;
@@ -313,7 +352,7 @@ export default {
       }
       // Server-side row count drives paging, so one unparsable card does not
       // look like a short (last) page or shift the offset.
-      parsed.rows = Math.max(parsed.length, countJobRows(htmlText));
+      parsed.rows = Math.max(parsed.length, countJobRows(htmlText), countArticles(htmlText));
       parsed.pagerParam = offset === 0 ? pagerOffsetParam(htmlText) : null;
       return parsed;
     };
@@ -354,7 +393,10 @@ export default {
       // so a later non-advancing page is a genuine end-of-board, not a mismatch.
       // NOTE: fresh === 0 must be evaluated before the empty-page break below,
       // or an inert key that returns an empty page 1 would exit without healing.
-      if (fresh === 0 && canHeal && page === 1) {
+      // A page whose cards were all dropped by the parser (rows > 0, nothing
+      // parsed) still advanced — not a reason to heal (upstream `stalled`).
+      const stalledPage = (articles.rows ?? articles.length) === 0 || (fresh === 0 && articles.length > 0);
+      if (stalledPage && canHeal && page === 1) {
         canHeal = false;
         for (const alt of OFFSET_KEYS) {
           if (alt === offsetParam) continue;
@@ -370,8 +412,13 @@ export default {
         }
       }
 
-      if (fresh === 0) break; // empty page / looped / offset ignored / last page
+      // Stop on an empty or repeated page. A page whose rows were all dropped
+      // (non-http link, no title) still advanced, so the walk goes on (upstream).
       const rows = articles.rows ?? articles.length;
+      if (rows === 0 || (fresh === 0 && articles.length > 0)) break; // empty / looped / offset ignored
+      // Avature never serves fewer than PAGE_SIZE (6) rows on a non-final page
+      // (seen: 6, 10, 12), so a shorter page 0 is the whole board (upstream).
+      if (page === 0 && rows < PAGE_SIZE) break;
       if (page === 0) pageSize = rows;
       if (rows < pageSize) break; // last page (shorter than page 0)
       offset += rows;

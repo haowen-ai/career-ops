@@ -1,6 +1,8 @@
 // @ts-check
 /** @typedef {import('./_types.js').Provider} Provider */
 
+import { safeEncodeURIComponent } from './_safe-url.mjs';
+
 // JibeApply provider — hits the /api/jobs endpoint on the same hostname.
 // Auto-detects from careers_url pattern `https://<slug>.jibeapply.com`.
 // iCIMS acquired Jibe in 2019; some tenants run it on a branded custom
@@ -22,6 +24,20 @@ const MAX_PAGES_CAP = 5000;
 // reports this as `filter.displayLimit` and it has been 10 on every tenant
 // observed so far.
 const DEFAULT_PAGE_SIZE = 10;
+
+// Opt-in per entry: `page_size: N` sends `limit=N` so each request returns up to N
+// postings (measured on careers.petsmart.com: limit=100 returns 100 and `page` then
+// counts in those units). Fewer, larger requests reach more of a big board for the
+// same politeness (robots.txt there is `Allow: /`, crawl-delay 5). Default is
+// unchanged: no `limit` is sent unless the entry sets it.
+const MAX_PAGE_SIZE = 100;
+
+/** Resolve an explicit page size: a positive integer `page_size`, capped; null = not set. */
+function resolvePageSize(entry) {
+  const v = entry?.page_size;
+  if (Number.isInteger(v) && v > 0) return Math.min(v, MAX_PAGE_SIZE);
+  return null;
+}
 
 /** Resolve the page cap: a positive integer `max_pages` on the entry, capped. */
 function resolveMaxPages(entry) {
@@ -67,9 +83,14 @@ export function parseJibeapplyResponse(json, entry) {
       const title = String(d.title || '').trim();
       const slug = d.slug || d.req_id;
       if (!title || !slug) return null;
+      // A lone surrogate in slug throws URIError out of encodeURIComponent and
+      // aborts the whole page's .map(); drop just this job (the trailing
+      // .filter(Boolean) removes the null).
+      const encodedSlug = safeEncodeURIComponent(slug);
+      if (encodedSlug === null) return null;
       return {
         title,
-        url: `${origin}/jobs/${encodeURIComponent(slug)}`,
+        url: `${origin}/jobs/${encodedSlug}`,
         company: String(d.hiring_organization || entry.name || '').trim(),
         location: d.full_location || [d.city, d.country].filter(Boolean).join(', '),
       };
@@ -98,7 +119,15 @@ export default {
     const apiUrl = (typeof entry.api === 'string' && validateExplicitApi(entry.api))
       || toApiUrl(url);
     if (!apiUrl) throw new Error(`jibeapply: cannot derive API URL for ${entry.name}`);
-    const first = await ctx.fetchJson(apiUrl, { redirect: 'error' });
+    // Opt-in page_size (upstream #6692): more postings per request.
+    const requestedSize = resolvePageSize(entry);
+    let firstUrl = apiUrl;
+    if (requestedSize) {
+      const u1 = new URL(apiUrl);
+      u1.searchParams.set('limit', String(requestedSize));
+      firstUrl = u1.toString();
+    }
+    const first = await ctx.fetchJson(firstUrl, { redirect: 'error' });
 
     // Keyword search (entry.keywords / entry.keyword_min_total, filled in by
     // the caller): a big board is read through the site's own search instead
@@ -116,15 +145,19 @@ export default {
         // facet value for student roles (e.g. Ulta tags1=Internship,
         // categories=Internships), read that filter instead of searching.
         if (entry.facet !== false) {
-          const viaFacet = await facetSearch(entry, ctx, apiUrl, first, boardTotal);
+          const viaFacet = await facetSearch(entry, ctx, firstUrl, first, boardTotal);
           if (viaFacet) return viaFacet;
         }
-        return keywordSearch(entry, ctx, apiUrl, terms, boardTotal);
+        return keywordSearch(entry, ctx, firstUrl, terms, boardTotal);
       }
     }
 
-    const { jobs: allJobs } = await paginate(entry, ctx, apiUrl, first, '');
-    return parseJibeapplyResponse({ jobs: allJobs }, entry);
+    const { jobs: allJobs, truncated } = await paginate(entry, ctx, firstUrl, first, '');
+    const result = parseJibeapplyResponse({ jobs: allJobs }, entry);
+    // Set when the board is cut short (page cap or a failed page), so a caller can tell a
+    // partial board from a complete one without reading stderr (upstream #5327).
+    if (truncated) /** @type {any} */ (result).jibeapplyTruncated = true;
+    return result;
   },
 };
 
@@ -156,9 +189,12 @@ async function paginate(entry, ctx, baseUrl, first, label) {
   const pageSize = first?.jobs?.length || first?.count || DEFAULT_PAGE_SIZE;
   const allJobs = [...(first?.jobs ?? [])];
   let truncated = false;
+  let pageFailed = false;
 
   if (total > pageSize && pageSize > 0) {
-    const maxPages = resolveMaxPages(entry);
+    // A health probe (verify-portals passes ctx.maxPages) caps the walk too.
+    const probeMax = Number(ctx.maxPages) > 0 ? Number(ctx.maxPages) : Infinity;
+    const maxPages = Math.min(resolveMaxPages(entry), probeMax);
     const pages = Math.min(Math.ceil(total / pageSize), maxPages);
     // Sequential, not concurrent (mirrors providers/4dayweek.mjs, thehub.mjs,
     // arbeitnow.mjs, workday.mjs) — a single tenant's API has no reason to
@@ -172,6 +208,10 @@ async function paginate(entry, ctx, baseUrl, first, label) {
       try {
         json = await ctx.fetchJson(u2.toString(), { redirect: 'error' });
       } catch (err) {
+        // A health probe (ctx.maxPages set) must see the failure, not first-page jobs as success.
+        if (ctx.maxPages != null) throw err;
+        pageFailed = true;
+        truncated = true;
         console.error(`⚠️  jibeapply: ${entry.name}${label} page ${page} fetch failed — ${err.message} (returning ${allJobs.length} jobs fetched so far)`);
         break;
       }
@@ -181,14 +221,25 @@ async function paginate(entry, ctx, baseUrl, first, label) {
     // The cap is silent by design (it's a safety net, not a working limit),
     // but a tenant that actually exceeds it needs to be surfaced —
     // otherwise the user has no way to notice postings are missing from
-    // their scan.
-    if (Math.ceil(total / pageSize) > maxPages) {
+    // their scan. Not when a page failed: that stop is already reported above.
+    if (!pageFailed && probeMax === Infinity && Math.ceil(total / pageSize) > maxPages) {
       truncated = true;
-      console.error(
-        `⚠️  jibeapply: ${entry.name}${label} has more postings than max_pages allows ` +
-        `(truncated: fetched ${allJobs.length} of ${total}) — ` +
-        `set max_pages on this portal entry to raise the cap (current: ${maxPages})`,
-      );
+      if (maxPages >= MAX_PAGES_CAP) {
+        // Raising max_pages cannot help here: the provider ceiling is the limit.
+        const hint = pageSize < MAX_PAGE_SIZE
+          ? ` — set page_size (up to ${MAX_PAGE_SIZE}) on this portal entry to read more postings per request`
+          : ` — narrow the board with a filter in the entry's api URL (e.g. a location query)`;
+        console.error(
+          `⚠️  jibeapply: ${entry.name}${label} is still cut short at the provider ceiling of ${MAX_PAGES_CAP} pages ` +
+          `(fetched ${allJobs.length} of ${total}); max_pages is already at its cap, so raising it changes nothing${hint}`,
+        );
+      } else {
+        console.error(
+          `⚠️  jibeapply: ${entry.name}${label} has more postings than max_pages allows ` +
+          `(fetched ${allJobs.length} of ${total}) — ` +
+          `set max_pages on this portal entry to raise the cap (current: ${maxPages})`,
+        );
+      }
     }
   }
 

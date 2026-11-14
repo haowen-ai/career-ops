@@ -1,8 +1,9 @@
 // @ts-check
 /** @typedef {import('./_types.js').Provider} Provider */
 
-import { fetchJsonWithRetry, sleep } from './_http.mjs';
+import { fetchJsonWithRetry, fetchTextWithRetry, sleep } from './_http.mjs';
 import { decodeEntities } from './_html-entities.mjs';
+import { htmlToText } from './_html-to-text.mjs';
 
 // Oracle Taleo Enterprise career-section provider (→ tracked_companies:).
 //
@@ -45,6 +46,18 @@ import { decodeEntities } from './_html-entities.mjs';
 //   (the requisition number; the internal jobId also works and is the fallback).
 // - Host pinned to https://<single-label>.taleo.net; redirects refused.
 // - careers_url query `keyword=` (if any) becomes the KEYWORD field.
+// - tre.taleo.net (Taleo Business Edition) is a different product: refused.
+// - Opt-in `fetchDetails: true` (upstream 1.40): a bounded prefix of postings
+//   (`detailLimit`, default 25, max 100) gets its description from the public
+//   detail page's JSON-LD JobPosting; skipped while probing; best-effort.
+//
+// Merge note (1.40.0-cj.1): upstream 1.40 ships its own taleo.mjs that first
+// fetches the jobsearch.ftl shell for a numeric portal id and column headings,
+// then POSTs `portal=<id>`. This fork's implementation (portalCode=<section>,
+// no shell request, columns from linkedColumn/locationsColumns, US LOCATION
+// facet refilter, max_pages truncation warning) is kept because it is verified
+// live on every tracked tenant and has the US filter upstream lacks; upstream's
+// detail enrichment is ported in.
 
 const HOST_RE = /^[a-z0-9][a-z0-9-]{0,62}\.taleo\.net$/;
 const SECTION_RE = /^[A-Za-z0-9_. -]{1,64}$/;
@@ -55,6 +68,9 @@ const MAX_PAGES_CAP = 400; // 10,000 rows, hard ceiling even for an override
 const INTER_PAGE_DELAY_MS = 200;
 const TIMEOUT_MS = 20_000;
 const US_RE = /^(united states( of america)?|usa|u\.s\.a?\.?|us)$/i;
+const TALEO_BUSINESS_EDITION_HOST = 'tre.taleo.net';
+const DEFAULT_DETAIL_LIMIT = 25;
+const MAX_DETAIL_LIMIT = 100;
 const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
 
 /**
@@ -69,7 +85,7 @@ export function resolveConfig(entry) {
   const u = new URL(raw); // throws on malformed input
   if (u.protocol !== 'https:') throw new Error(`taleo: refusing non-https URL ${u.protocol}`);
   const host = u.hostname.toLowerCase();
-  if (!HOST_RE.test(host)) throw new Error(`taleo: host not allowed: ${u.hostname}`);
+  if (!HOST_RE.test(host) || host === TALEO_BUSINESS_EDITION_HOST) throw new Error(`taleo: host not allowed: ${u.hostname}`);
   let section = typeof entry?.careersection === 'string' ? entry.careersection : '';
   if (!section) {
     const m = u.pathname.match(/^\/careersection\/([^/]+)\//);
@@ -224,6 +240,51 @@ export function parseSearchResponse(json, cfg) {
   return { rows, rawCount: list.length, total };
 }
 
+// ── Detail enrichment (upstream 1.40) ───────────────────────────────────
+function detailLimit(entry) {
+  const value = Number(entry.detailLimit);
+  return Number.isInteger(value) && value > 0
+    ? Math.min(value, MAX_DETAIL_LIMIT)
+    : DEFAULT_DETAIL_LIMIT;
+}
+
+function decodeDetail(value) {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  let decoded = value;
+  if (/%[0-9a-f]{2}/i.test(decoded)) {
+    try { decoded = decodeURIComponent(decoded); } catch { /* keep the original text */ }
+  }
+  return htmlToText(decoded);
+}
+
+function findJobPosting(node) {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const found = findJobPosting(item);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (!node || typeof node !== 'object') return null;
+  const type = node['@type'];
+  if (type === 'JobPosting' || (Array.isArray(type) && type.includes('JobPosting'))) return node;
+  if (node['@graph']) return findJobPosting(node['@graph']);
+  return null;
+}
+
+/** Extract the public JobPosting description embedded in Taleo detail HTML. */
+export function parseTaleoDetail(html) {
+  if (typeof html !== 'string') return '';
+  for (const match of html.matchAll(/<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      const posting = findJobPosting(JSON.parse(match[1]));
+      const description = decodeDetail(posting?.description);
+      if (description) return description;
+    } catch { /* another JSON-LD block may still be usable */ }
+  }
+  return '';
+}
+
 function resolveMaxPages(entry) {
   const v = entry?.max_pages;
   if (Number.isInteger(v) && v > 0) return Math.min(v, MAX_PAGES_CAP);
@@ -239,7 +300,7 @@ export default {
       const raw = entry?.careers_url || entry?.api;
       if (typeof raw !== 'string') return null;
       const u = new URL(raw);
-      if (u.protocol !== 'https:' || !HOST_RE.test(u.hostname.toLowerCase())) return null;
+      if (u.protocol !== 'https:' || !HOST_RE.test(u.hostname.toLowerCase()) || u.hostname.toLowerCase() === TALEO_BUSINESS_EDITION_HOST) return null;
       if (!/^\/careersection\/[^/]+\//.test(u.pathname)) return null;
       return { url: u.href };
     } catch {
@@ -309,6 +370,23 @@ export default {
 
     if (stopReason === 'max_pages' && total !== null && jobs.length < total) {
       console.error(`⚠️  taleo: ${entry.name} truncated at ${jobs.length} of ${total} postings — raise max_pages on this entry for more`);
+      /** @type {any} */ (jobs).truncated = { reason: 'page-cap', fetched: jobs.length, total };
+    }
+
+    // Health probes are deliberately list-only. Normal scans enrich a bounded
+    // prefix so a very large board cannot trigger an unbounded request fanout.
+    if (entry.fetchDetails === true && !probing) {
+      const subset = jobs.slice(0, detailLimit(entry));
+      for (let i = 0; i < subset.length; i++) {
+        if (i > 0) await sleep(INTER_PAGE_DELAY_MS, ctx);
+        try {
+          const detailHtml = await fetchTextWithRetry(ctx, subset[i].url, { redirect: 'error' });
+          const description = parseTaleoDetail(detailHtml);
+          if (description) subset[i].description = description;
+        } catch {
+          // Detail enrichment is best-effort. Keep the parsed listing row.
+        }
+      }
     }
     return jobs;
   },

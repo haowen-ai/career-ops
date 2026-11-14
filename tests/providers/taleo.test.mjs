@@ -300,3 +300,52 @@ test('regression: a malformed LOCATION facet is ignored, never loses the batch',
   assert.equal(jobs.length, 1);
   assert.equal(ctx.calls.length, 1);
 });
+
+// ── Ported from upstream 1.40's taleo tests: Business Edition host, detail enrichment ──
+test('detect()/fetch(): tre.taleo.net (Business Edition) is refused', async () => {
+  assert.equal(tl.detect({ name: 'X', careers_url: 'https://tre.taleo.net/careersection/demo/jobsearch.ftl' }), null);
+  const ctx = makeCtx([FIXTURE]);
+  await assert.rejects(() => tl.fetch({ name: 'X', careers_url: 'https://tre.taleo.net/careersection/demo/jobsearch.ftl' }, ctx));
+  assert.equal(ctx.calls.length, 0);
+});
+
+const DETAIL_HTML = '<script type="application/ld+json">{"@type":"JobPosting","description":"%3Cp%3EBuild%20R%26amp%3BD%20systems.%3C%2Fp%3E"}</script>';
+
+test('parseTaleoDetail(): decodes URL-encoded HTML from public detail JSON-LD', () => {
+  assert.equal(mod.parseTaleoDetail(DETAIL_HTML), 'Build R&D systems.');
+  assert.equal(mod.parseTaleoDetail('<html></html>'), '');
+});
+
+test('fetch(): fetchDetails is opt-in, bounded by detailLimit, best-effort, skipped while probing', async () => {
+  const detailCalls = [];
+  const withDetails = (bodies, extra = {}) => makeCtx(bodies, {
+    fetchText: async (url, opts) => {
+      detailCalls.push({ url, opts });
+      if (detailCalls.length === 1 && extra.failFirst) throw Object.assign(new Error('HTTP 404'), { status: 404 });
+      return DETAIL_HTML;
+    },
+    ...extra,
+  });
+  const plain = await tl.fetch(ENTRY, withDetails([page(3, 0, 3)]));
+  assert.equal(detailCalls.length, 0);
+  assert.ok(plain.every((j) => !j.description));
+
+  const all = await tl.fetch({ ...ENTRY, fetchDetails: true }, withDetails([page(3, 0, 3)]));
+  assert.equal(detailCalls.length, 3);
+  assert.ok(all.every((j) => j.description === 'Build R&D systems.'));
+  assert.ok(detailCalls.every((c) => c.opts.redirect === 'error'));
+
+  detailCalls.length = 0;
+  const bounded = await tl.fetch({ ...ENTRY, fetchDetails: true, detailLimit: 1 }, withDetails([page(3, 0, 3)]));
+  assert.equal(detailCalls.length, 1);
+  assert.ok(bounded[0].description && !bounded[1].description);
+
+  detailCalls.length = 0;
+  const failed = await tl.fetch({ ...ENTRY, fetchDetails: true }, withDetails([page(2, 0, 2)], { failFirst: true }));
+  assert.equal(failed.length, 2);
+  assert.ok(!failed[0].description && failed[1].description);
+
+  detailCalls.length = 0;
+  await tl.fetch({ ...ENTRY, fetchDetails: true }, withDetails([page(2, 0, 2)], { maxPages: 1 }));
+  assert.equal(detailCalls.length, 0);
+});

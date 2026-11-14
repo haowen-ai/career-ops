@@ -17,15 +17,56 @@
 // Detail enrichment answers "what does this job say", not "is this endpoint
 // alive" — it is skipped entirely while verify-portals is probing, and runs
 // in small batches so a 400-posting board cannot hammer the shared API host.
+//
+// The walk reads 100 postings a page and stops at 50 pages (5,000 postings).
+// A board past that is reported as cut short, on stderr and in the canonical
+// `truncated` tag scan.mjs reads, and an entry can raise the cap, up to
+// SR_HARD_MAX_PAGES:
+//
+//   max_pages: 60        # a 6,000-posting walk
 
 import { intInRange } from './_config-utils.mjs';
 import { htmlToText } from './_html-to-text.mjs';
+import { coerceId } from './_ids.mjs';
+import { fetchJsonWithRetry, sleep } from './_http.mjs';
+import { safeEncodeURIComponent } from './_safe-url.mjs';
 
 const ALLOWED_SMARTRECRUITERS_HOSTS = new Set(['api.smartrecruiters.com']);
 const SR_CAREERS_HOSTS = new Set(['careers.smartrecruiters.com', 'jobs.smartrecruiters.com']);
 const SR_PAGE_SIZE = 100;
-const SR_MAX_PAGES = 50;  // default safety cap (5000 postings @ 100/page); entry `max_pages` overrides
+const SR_MAX_PAGES = 50;  // default cap (5000 postings @ 100/page) when the entry sets no max_pages
+// Upper bound an entry may opt in to with `max_pages` (10,000 postings). Bosch
+// alone listed 5,104 on 2026-11-10, past the default; the bound stays finite so
+// a typo can't walk a board forever.
+export const SR_HARD_MAX_PAGES = 100;
 const SR_DETAIL_BATCH = 5;
+// A raised max_pages can mean 100 list requests to one public API host, so the
+// walk spaces its pages and retries a transient failure (429, 5xx, a dropped
+// connection) a bounded number of times, as oraclecloud.mjs does. A page that
+// still fails ends the board with that error, never as a page-cap truncation.
+const SR_INTER_PAGE_DELAY_MS = 250;
+const SR_RETRY_POLICY = { retries: 3 };
+
+/**
+ * Page cap for an entry: a positive integer `max_pages` up to
+ * SR_HARD_MAX_PAGES, else the default. Exported for unit tests.
+ * @param {{max_pages?: unknown}} entry
+ */
+export function resolveMaxPages(entry) {
+  const v = entry?.max_pages;
+  return Number.isInteger(v) && /** @type {number} */ (v) > 0
+    ? Math.min(/** @type {number} */ (v), SR_HARD_MAX_PAGES)
+    : SR_MAX_PAGES;
+}
+
+// NaN-safe Date.parse, as in greenhouse.mjs and ashby.mjs, but strings only:
+// Date.parse on an object whose toString is not callable throws, and one bad
+// row must not abort the whole board.
+function toEpochMs(value) {
+  if (typeof value !== 'string' || !value) return undefined;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
 
 /**
  * @param {any} entry
@@ -262,6 +303,23 @@ function buildPostingDetailUrl(slug, id) {
   return `https://api.smartrecruiters.com/v1/companies/${slug}/postings/${encodeURIComponent(id)}`;
 }
 
+/**
+ * The posting's ATS-native identity: the configured company slug and the
+ * posting `id` from the payload, never parsed out of a URL. Exported for unit
+ * tests. Returns undefined unless both halves are clean nonempty strings (no
+ * surrounding whitespace, no control characters), the shape
+ * listing-fingerprint.mjs accepts, so an unusable id falls back to URL dedup.
+ *
+ * @param {string | null | undefined} slug
+ * @param {unknown} id
+ * @returns {{ats_provider: 'smartrecruiters', board_slug: string, posting_id: string} | undefined}
+ */
+export function smartRecruitersListingIdentity(slug, id) {
+  const clean = (v) => typeof v === 'string' && v !== '' && v === v.trim() && !/[\u0000-\u001f\u007f]/u.test(v);
+  if (!clean(slug) || !clean(id)) return undefined;
+  return { ats_provider: 'smartrecruiters', board_slug: /** @type {string} */ (slug), posting_id: /** @type {string} */ (id) };
+}
+
 function resolveApiUrl(entry) {
   const slug = resolveSlug(entry);
   return slug ? buildPostingsUrl(slug, 0) : null;
@@ -280,37 +338,42 @@ export default {
     const slug = resolveSlug(entry);
     if (!slug) throw new Error(`smartrecruiters: cannot derive API URL for ${entry.name}`);
 
-    // Honor the ctx.maxPages pagination hint (the portal health probe passes 1);
-    // a real sweep keeps the SR_MAX_PAGES safety cap unless the entry sets a
-    // positive integer `max_pages`, which replaces it (up or down).
-    const entryPages = Number.isInteger(entry?.max_pages) && entry.max_pages > 0 ? entry.max_pages : SR_MAX_PAGES;
-    const pageLimit = Math.min(
-      entryPages,
-      Number.isInteger(ctx?.maxPages) && ctx.maxPages > 0 ? ctx.maxPages : Infinity,
-    );
+    // Honor the ctx.maxPages pagination hint (the portal health probe passes 1)
+    // as a ceiling, and don't call that deliberate stop a truncation. An entry
+    // max_pages is kept up to SR_HARD_MAX_PAGES (upstream #6799).
+    const entryMaxPages = resolveMaxPages(entry);
+    const ctxCap = Number.isInteger(ctx?.maxPages) && ctx.maxPages > 0 ? ctx.maxPages : Infinity;
+    const pageLimit = Math.min(entryMaxPages, ctxCap);
+    const getPage = async (/** @type {string} */ apiUrl) => {
+      assertSmartRecruitersUrl(apiUrl);
+      return fetchJsonWithRetry(ctx, apiUrl, { redirect: 'error' }, SR_RETRY_POLICY);
+    };
 
     // One paginated walk over the postings list (optionally filtered by a
-    // search term). `first` reuses an already-fetched offset-0 page. `capped`
-    // means the page cap stopped a walk whose last page was still full.
+    // search term or facet). `first` reuses an already-fetched offset-0 page.
+    // Upstream stop rules: the RAW page length decides (a dropped malformed ID
+    // must not hide later pages; the parser throws on a page that is not a
+    // board), and `capped` means the page cap ended the walk with postings
+    // still unread (or no total to say the board ended) — never a probe's stop.
     const walk = async (filter, first) => {
       const rows = [];
-      let capped = false;
+      let total = null;
+      let ended = false;
       for (let page = 0; page < pageLimit; page++) {
         let json;
         if (page === 0 && first !== undefined) {
           json = first;
         } else {
-          const apiUrl = buildPostingsUrl(slug, page * SR_PAGE_SIZE, filter);
-          assertSmartRecruitersUrl(apiUrl);
-          json = await ctx.fetchJson(apiUrl, { redirect: 'error' });
+          if (page > 0) await sleep(SR_INTER_PAGE_DELAY_MS, ctx);
+          json = await getPage(buildPostingsUrl(slug, page * SR_PAGE_SIZE, filter));
         }
-        const parsed = parseSmartRecruitersResponse(json, entry.name);
-        if (parsed.length === 0) break;
+        if (total === null && Number.isSafeInteger(json?.totalFound) && json.totalFound >= 0) total = json.totalFound;
+        const parsed = parseSmartRecruitersResponse(json, entry.name, slug);
         rows.push(...parsed);
-        if (parsed.length < SR_PAGE_SIZE) break;  // last page (short)
-        if (page === pageLimit - 1) capped = true;
+        if (json.content.length < SR_PAGE_SIZE) { ended = true; break; }
       }
-      return { rows, capped };
+      const capped = !ended && entryMaxPages < ctxCap && (total === null || pageLimit * SR_PAGE_SIZE < total);
+      return { rows, capped, total };
     };
 
     // Keyword search (entry.keywords / entry.keyword_min_total): the first
@@ -326,10 +389,10 @@ export default {
     /** @type {null | Record<string, any>} */
     let keywordSearch = null;
     let truncated = false;
+    /** @type {null | {reason: string, fetched: number, total?: number}} */
+    let boardCut = null;
     if (terms.length > 0 && !probingList) {
-      const firstUrl = buildPostingsUrl(slug, 0);
-      assertSmartRecruitersUrl(firstUrl);
-      const firstJson = await ctx.fetchJson(firstUrl, { redirect: 'error' });
+      const firstJson = await getPage(buildPostingsUrl(slug, 0));
       const boardTotal = Number.isFinite(firstJson?.totalFound) ? firstJson.totalFound : null;
       if (minTotal !== null && boardTotal !== null && boardTotal <= minTotal) {
         all = (await walk(null, firstJson)).rows;
@@ -350,9 +413,7 @@ export default {
             let capped = false;
             for (const value of values) {
               const facet = { name: SR_FACET_NAME, values: [value] };
-              const facetUrl = buildPostingsUrl(slug, 0, facet);
-              assertSmartRecruitersUrl(facetUrl);
-              const facetJson = await ctx.fetchJson(facetUrl, { redirect: 'error' });
+              const facetJson = await getPage(buildPostingsUrl(slug, 0, facet));
               const reason = facetUsable(facetJson, boardTotal, facet);
               if (reason === 'empty') { perValue[value] = 0; continue; }
               if (reason) { facetFallback = `${value}: ${reason}`; break; }
@@ -405,7 +466,18 @@ export default {
         }
       }
     } else {
-      all = (await walk(null)).rows;
+      // The whole-board read: say out loud when the cap cut it short.
+      const res = await walk(null);
+      all = res.rows;
+      if (res.capped) {
+        const total = res.total;
+        const counts = total === null ? `${all.length} jobs fetched, total unknown` : `${all.length} of ${total} jobs`;
+        const advice = pageLimit < SR_HARD_MAX_PAGES
+          ? `raise max_pages on this entry for more (up to ${SR_HARD_MAX_PAGES})`
+          : `max_pages is already at the ${SR_HARD_MAX_PAGES}-page ceiling`;
+        console.error(`⚠️  smartrecruiters: ${entry.name} truncated at max_pages=${pageLimit} (${counts}) — ${advice}`);
+        boardCut = { reason: 'page-cap', fetched: all.length, ...(total === null ? {} : { total }) };
+      }
     }
 
     // Detail enrichment answers "what does this job say", not "is this
@@ -431,14 +503,25 @@ export default {
       }
     }
 
-    // The numeric posting id drove the detail calls above; it is internal
-    // plumbing and must not leak into the pipeline's Job rows (vdab strips
-    // its id the same way).
-    const out = all.map(({ id, ...job }) => job);
+    // The raw posting id drove the detail calls above and stays out of the
+    // pipeline's Job rows (vdab strips its id the same way). The payload's own
+    // string id survives only as the posting half of the ATS-native identity
+    // scan.mjs dedups on (docs/listing-fingerprint.md), next to the configured
+    // board slug; a numeric payload id was coerced for the detail call and
+    // gets no identity.
+    const jobs = all.map(({ id, postingId, ...job }) => {
+      const listingIdentity = smartRecruitersListingIdentity(slug, postingId);
+      return listingIdentity ? { ...job, listingIdentity } : job;
+    });
     if (keywordSearch) {
-      Object.assign(out, truncated ? { keywordSearch, truncated: true } : { keywordSearch });
+      // Keyword / facet read (fork): how it was read, and whether a capped query cut it.
+      Object.assign(jobs, truncated ? { keywordSearch, truncated: true } : { keywordSearch });
+    } else if (boardCut) {
+      // Canonical shape read by lib/board-truncation.mjs, so scan.mjs logs the
+      // board as `partial` instead of `reachable`.
+      /** @type {any} */ (jobs).truncated = { ...boardCut, fetched: jobs.length };
     }
-    return out;
+    return jobs;
   },
 };
 
@@ -446,7 +529,16 @@ export default {
  * Parse a SmartRecruiters /postings response. Exported for unit tests.
  *
  * SmartRecruiters returns:
- *   { content: [{ id, name, ref, location: { fullLocation?, city?, region?, country?, remote? } }] }
+ *   { content: [{ id, name, ref, refNumber, language: { code },
+ *                 location: { fullLocation?, city?, region?, country?, remote? } }] }
+ *
+ * - requisitionId: `refNumber`, the employer's requisition id. It is stable
+ *   across re-releases of one requisition (each re-release gets a new posting
+ *   `id`), and shared by every language version of it.
+ * - language: `language.code`, the language code of the posting's text (`de`,
+ *   `en-GB`, `pt-BR`).
+ *
+ * Both keys are omitted when the payload carries no usable value.
  *
  * - location: prefer `fullLocation`; else assemble from city/region/country
  *   parts (skipping empties); append "Remote" when `location.remote` is true.
@@ -456,16 +548,26 @@ export default {
  *   which the liveness checker then reports as an expired posting (#1612).
  *   SmartRecruiters resolves the page by id alone, so the trailing title slug is
  *   cosmetic. If `ref` is missing or untrusted, synthesise the same shape from
- *   the company slug + posting id.
+ *   the configured company slug + posting id. The display name is only a
+ *   fallback for callers that do not supply a company slug.
+ *   A posting that needs the fallback and has an unencodable ID (a lone
+ *   surrogate) is omitted, so the result can be shorter than `content`.
  *
  * @param {any} json
  * @param {string} companyName
- * @returns {Array<{title: string, url: string, company: string, location: string, id?: string}>}
+ * @param {string} [companySlug] Already-escaped URL.pathname segment from resolveSlug.
+ * @returns {Array<{title: string, url: string, company: string, location: string, id?: string, postingId?: string, requisitionId?: string, language?: string}>}
  */
-export function parseSmartRecruitersResponse(json, companyName) {
-  const items = json?.content;
-  if (!Array.isArray(items)) return [];
-  return items.map(j => {
+export function parseSmartRecruitersResponse(json, companyName, companySlug) {
+  // { content: [] } is an empty page. Any other envelope ({}, { error }, a bare
+  // string) is a changed or failing API and must not read as a board with no
+  // open roles (ADDING_A_PROVIDER.md, "Defensive parsing"; #6906).
+  const items = json && Array.isArray(json.content) ? json.content : null;
+  if (!items) {
+    const got = json && typeof json === 'object' ? Object.keys(json).join(', ') : json === null ? 'null' : typeof json;
+    throw new Error(`smartrecruiters: unexpected response for ${companyName} — expected content[], got: [${got}]`);
+  }
+  return items.flatMap(j => {
     const loc = j.location || {};
     const fullLocation = loc.fullLocation || [loc.city, loc.region, loc.country].filter(Boolean).join(', ');
     const remote = loc.remote ? 'Remote' : '';
@@ -490,11 +592,31 @@ export function parseSmartRecruitersResponse(json, companyName) {
       }
     }
     if (!url && j.id) {
-      const companySlug = (companyName || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-      if (companySlug) {
-        url = `https://jobs.smartrecruiters.com/${companySlug}/${j.id}${slugified ? `-${slugified}` : ''}`;
+      const fallbackSlug = companySlug || (companyName || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      if (fallbackSlug) {
+        const encodedId = safeEncodeURIComponent(j.id);
+        if (encodedId === null) return [];
+        url = `https://jobs.smartrecruiters.com/${fallbackSlug}/${encodedId}${slugified ? `-${slugified}` : ''}`;
       }
     }
-    return { title: j.name || '', url, location, company: companyName, id: typeof j.id === 'string' || typeof j.id === 'number' ? String(j.id) : undefined };
+    const requisitionId = coerceId(j.refNumber);
+    const language = coerceId(j.language?.code);
+    // releasedDate is the posting's publish time. Without it every row was
+    // undated, and the posting-age and --since filters pass an undated row.
+    const postedAt = toEpochMs(j.releasedDate);
+    return [{
+      title: j.name || '',
+      url,
+      location,
+      company: companyName,
+      id: typeof j.id === 'string' || typeof j.id === 'number' ? String(j.id) : undefined,
+      // The id exactly as the payload typed it, for the listing identity only:
+      // a numeric id is stringified above for the detail call, but identity
+      // ids are never coerced (docs/listing-fingerprint.md), so it gets none.
+      ...(typeof j.id === 'string' ? { postingId: j.id } : {}),
+      ...(requisitionId ? { requisitionId } : {}),
+      ...(language ? { language } : {}),
+      ...(postedAt !== undefined ? { postedAt } : {}),
+    }];
   });
 }

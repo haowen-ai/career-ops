@@ -48,7 +48,7 @@
 // User-Agent is sent to reduce (not eliminate) WAF friction.
 
 import { decodeEntities } from './_html-entities.mjs';
-import { BROWSER_LIKE_USER_AGENT, fetchJsonWithRetry } from './_http.mjs';
+import { BROWSER_LIKE_USER_AGENT, fetchJsonWithRetry, sleep } from './_http.mjs';
 
 // `oraclecloud(?:[1-9][0-9]?)?` = oraclecloud.com plus oraclecloud1.com …
 // oraclecloud99.com. No leading zero, at most two digits — a bounded family,
@@ -61,7 +61,12 @@ const ORACLE_HOST_RE = /^[a-z0-9-]+\.fa\.(?:[a-z0-9-]+\.)?(?:ocs\.)?oraclecloud(
 const VANITY_HOSTS = new Set(['enterpriseplatform.dell.com']);
 
 const PAGE_SIZE = 200;
-const MAX_PAGES = 25;             // default safety cap (~5000 jobs); entry `max_pages` overrides
+const MAX_PAGES = 25;             // default cap (~5000 jobs) when the entry sets no max_pages and the tenant reports no total
+// Upper bound an entry may opt in to with `max_pages` (~20000 jobs, 100 requests
+// of 200 rows at 250ms spacing). JPMorgan Chase alone has 7000+ postings, which
+// the default cannot cover; the bound stays finite so a typo can't walk a board
+// forever.
+export const HARD_MAX_PAGES = 100;
 const RETRY_POLICY = { retries: 3 };
 const INTER_PAGE_DELAY_MS = 250;  // WAF-aware spacing between same-host pages
 
@@ -89,11 +94,6 @@ function toEpochMs(value) {
   if (!value) return undefined;
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? undefined : parsed;
-}
-
-function sleep(ms, ctx) {
-  if (typeof ctx?.sleep === 'function') return ctx.sleep(ms);
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -387,15 +387,32 @@ export function facetMatcher(raw) {
 }
 
 /**
- * Walk the requisitions API by offset for one query (keyword or none).
+ * Walk the requisitions API by offset for one query (keyword, facet or none).
  * `firstJson`, when given, is an already-fetched page 0 for the same query.
- * Returns the parsed jobs, the reported TotalJobsCount (or null) and whether
- * the walk stopped on the page cap with rows still remaining.
+ * `limits` = { entryMaxPages, ctxCap, autoRaise } (see fetch()).
+ * Returns the parsed jobs, the reported TotalJobsCount (or null), whether the
+ * walk was cut short (`capped`) and why (`reason`), and the page cap it ran under.
+ *
+ * Stop rules (upstream #6682 / 78d21e2d, merged with the fork's server-cap rule):
+ *   - `hasMore` is unreliable (JPMC returns false on every page), never used;
+ *   - an empty page ends the walk; short of the reported total it is the
+ *     server's offset cap (an EMPTY page at offset >= 10000 however large
+ *     TotalJobsCount is — Kroger 11,822 → offset 10000 = 0 rows): capped;
+ *   - a SHORT page only ends the walk when the tenant reports no total (ORC
+ *     serves fewer rows than the limit mid-list: American Express 200, 199, 54);
+ *   - past TotalJobsCount there is nothing left;
+ *   - running out of pages with rows still unread is capped (not when a health
+ *     probe's ctx.maxPages is the stop).
+ *   Without an entry max_pages the page cap rises to cover the reported total,
+ *   up to HARD_MAX_PAGES.
  */
-async function walkPages(entry, ctx, site, maxPages, query, firstJson) {
+async function walkPages(entry, ctx, site, limits, query, firstJson) {
+  let entryMaxPages = limits.entryMaxPages;
+  let maxPages = Math.min(entryMaxPages, limits.ctxCap);
   const all = [];
   let total = null;
-  let capped = false;
+  let ended = false;
+  let serverCapped = false;
   for (let page = 0; page < maxPages; page++) {
     const offset = page * PAGE_SIZE;
     let json;
@@ -409,24 +426,26 @@ async function walkPages(entry, ctx, site, maxPages, query, firstJson) {
     all.push(...parsed);
 
     const item = Array.isArray(json?.items) ? json.items[0] : null;
-    if (total === null && item && typeof item.TotalJobsCount === 'number') total = item.TotalJobsCount;
+    if (total === null && item && typeof item.TotalJobsCount === 'number') {
+      total = item.TotalJobsCount;
+      if (limits.autoRaise) {
+        entryMaxPages = Math.max(entryMaxPages, Math.min(Math.ceil(total / PAGE_SIZE), HARD_MAX_PAGES));
+        maxPages = Math.min(entryMaxPages, limits.ctxCap);
+      }
+    }
     const listLen = item && Array.isArray(item.requisitionList) ? item.requisitionList.length : 0;
 
-    // Stop conditions. NOTE: `hasMore` is unreliable on some tenants (e.g.
-    // JPMC returns hasMore:false on EVERY page even with 7000+ jobs), so it's
-    // NOT used to stop — trusting it caps the scan at one page. The
-    // authoritative signals are the returned list length and TotalJobsCount:
-    //   - an empty or short page means we've reached the end;
-    //   - once we've paged past TotalJobsCount there's nothing left to fetch.
-    // The API also returns an EMPTY page at offset >= 10000 however large
-    // TotalJobsCount is (verified live: Kroger 11,822 → offset 10000 = 0 rows),
-    // so an empty page short of the reported total is a server-side cap.
-    if (listLen === 0 && total !== null && offset < total) capped = true;
-    if (listLen === 0 || listLen < PAGE_SIZE) break;
-    if (total !== null && offset + PAGE_SIZE >= total) break;
-    if (page === maxPages - 1) capped = true;
+    if (listLen === 0) {
+      ended = true;
+      if (total !== null && offset < total && all.length < total) serverCapped = true;
+      break;
+    }
+    if (total !== null) {
+      if (offset + PAGE_SIZE >= total) { ended = true; break; }
+    } else if (listLen < PAGE_SIZE) { ended = true; break; }
   }
-  return { jobs: all, total, capped };
+  const pageCapped = !ended && entryMaxPages < limits.ctxCap;
+  return { jobs: all, total, capped: serverCapped || pageCapped, reason: serverCapped ? 'source-cap' : 'page-cap', maxPages };
 }
 
 async function fetchPage(ctx, site, offset, query, delay) {
@@ -437,6 +456,18 @@ async function fetchPage(ctx, site, offset, query, delay) {
     redirect: 'error',
     headers: { 'User-Agent': BROWSER_LIKE_USER_AGENT, Accept: 'application/json' },
   }, RETRY_POLICY);
+}
+
+/**
+ * Page cap for an entry: a positive integer `max_pages` up to HARD_MAX_PAGES,
+ * else the default. Exported for unit tests.
+ * @param {{max_pages?: unknown}} entry
+ */
+export function resolveMaxPages(entry) {
+  const v = entry?.max_pages;
+  return Number.isInteger(v) && /** @type {number} */ (v) > 0
+    ? Math.min(/** @type {number} */ (v), HARD_MAX_PAGES)
+    : MAX_PAGES;
 }
 
 /** @type {Provider} */
@@ -456,24 +487,48 @@ export default {
     const site = resolveSite(entry);
     if (!site) throw new Error(`oraclecloud: cannot derive API URL for ${entry.name}`);
 
-    // A positive integer `max_pages` on the entry replaces the default cap, up or down,
-    // so a board larger than MAX_PAGES x PAGE_SIZE can be read whole.
-    // A health probe passes ctx.maxPages; it bounds every walk (probes stay small).
+    // Page caps (upstream #6690 / #6682): a positive integer `max_pages` on the
+    // entry, up to HARD_MAX_PAGES, is kept as set; without one the cap starts at
+    // MAX_PAGES and rises to cover the tenant's reported TotalJobsCount. A health
+    // probe passes ctx.maxPages; it bounds every walk and is never a truncation.
     const probePages = Number(ctx?.maxPages);
     const probing = Number.isInteger(probePages) && probePages > 0;
-    const entryPages = Number.isInteger(entry.max_pages) && entry.max_pages > 0
-      ? entry.max_pages
-      : MAX_PAGES;
-    const maxPages = probing ? Math.min(entryPages, probePages) : entryPages;
+    const limits = {
+      entryMaxPages: resolveMaxPages(entry),
+      ctxCap: probing ? probePages : Infinity,
+      autoRaise: !(Number.isInteger(entry?.max_pages) && entry.max_pages > 0),
+    };
+
+    // The whole-board read: warn and tag a board the page cap cut short.
+    const fullBoard = async (firstJson) => {
+      const res = await walkPages(entry, ctx, site, limits, null, firstJson);
+      const all = res.jobs;
+      if (res.capped) {
+        const counts = res.total === null ? `${all.length} jobs fetched, total unknown` : `${all.length} of ${res.total} jobs`;
+        if (res.reason === 'source-cap') {
+          console.error(`⚠️  oraclecloud: ${entry.name} truncated: the API stops serving rows at offset 10000 (${counts}) — use keyword_search or a facet to read the rest`);
+        } else {
+          const advice = res.maxPages < HARD_MAX_PAGES
+            ? `raise max_pages on this entry for more (up to ${HARD_MAX_PAGES})`
+            : `max_pages is already at the ${HARD_MAX_PAGES}-page ceiling`;
+          console.error(`⚠️  oraclecloud: ${entry.name} truncated at max_pages=${res.maxPages} (${counts}) — ${advice}`);
+        }
+        // Same tag workday.mjs / eightfold.mjs put on a cut-short board, plus the
+        // canonical shape read by lib/board-truncation.mjs (scan.mjs).
+        /** @type {any} */ (all).oraclecloudTruncated = true;
+        /** @type {any} */ (all).truncated = { reason: res.reason, fetched: all.length, ...(res.total === null ? {} : { total: res.total }) };
+      }
+      return all;
+    };
 
     const terms = normalizeKeywords(entry.keywords);
     if (terms.length === 0) {
-      return (await walkPages(entry, ctx, site, maxPages, null)).jobs;
+      return fullBoard();
     }
     // A health probe (ctx.maxPages) never searches: unfiltered pages only, up
     // to the probe's page budget, no facet/keyword requests, no marker.
     if (probing) {
-      return (await walkPages(entry, ctx, site, maxPages, null)).jobs;
+      return fullBoard();
     }
 
     // Student search (entry.keywords + optional entry.keyword_min_total).
@@ -494,7 +549,7 @@ export default {
       const item = Array.isArray(first?.items) ? first.items[0] : null;
       if (item && typeof item.TotalJobsCount === 'number') boardTotal = item.TotalJobsCount;
       if (minTotal !== null && boardTotal !== null && boardTotal <= minTotal) {
-        return (await walkPages(entry, ctx, site, maxPages, null, first)).jobs;
+        return fullBoard(first);
       }
     }
 
@@ -510,7 +565,7 @@ export default {
       const facet = chooseFacet(facetFilters(Array.isArray(first?.items) ? first.items[0] : null, facetMatcher(entry.facet_values)));
       if (facet) {
         await sleep(INTER_PAGE_DELAY_MS, ctx);
-        const res = await walkPages(entry, ctx, site, maxPages, { filter: facet.filter });
+        const res = await walkPages(entry, ctx, site, limits, { filter: facet.filter });
         if (res.jobs.length) {
           const fjobs = [];
           merge(fjobs, new Set(), res.jobs);
@@ -534,7 +589,7 @@ export default {
     let requested = first !== undefined; // page 0 already fetched → space the next request
     for (const term of terms) {
       if (requested) await sleep(INTER_PAGE_DELAY_MS, ctx);
-      const res = await walkPages(entry, ctx, site, maxPages, term);
+      const res = await walkPages(entry, ctx, site, limits, term);
       requested = true;
       perTerm[term] = res.jobs.length;
       if (res.capped) truncated = true;

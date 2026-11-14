@@ -3,6 +3,7 @@
 
 import { fetchJsonWithRetry, sleep } from './_http.mjs';
 import { decodeEntities } from './_html-entities.mjs';
+import { safeEncodeURIComponent } from './_safe-url.mjs';
 
 // Best Buy careers provider (→ tracked_companies:).
 //
@@ -145,7 +146,7 @@ export function parseWidgetResponse(json) {
     rows.push({
       id: req,
       title,
-      url: `${ORIGIN}/bby?id=job_details&req_id=${encodeURIComponent(req)}`,
+      url: `${ORIGIN}/bby?id=job_details&req_id=${safeEncodeURIComponent(req)}`,
       location: parts.join(', '),
     });
   }

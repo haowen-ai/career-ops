@@ -108,7 +108,7 @@ test('total > keyword_min_total → one paginated query per term, merged + dedup
   // Delay before every non-first page and between terms.
   assert.ok(sleeps.length >= 4 && sleeps.every((ms) => ms > 0));
   // Same job object shape as the full path.
-  assert.deepEqual(Object.keys(jobs[0]).sort(), ['company', 'location', 'postedAt', 'title', 'url']);
+  assert.deepEqual(Object.keys(jobs[0]).sort(), ['company', 'location', 'postedAt', 'requisitionId', 'title', 'url']);
 });
 
 test('dedup across terms falls back to URL when the URL carries no requisition id', async () => {
@@ -130,7 +130,8 @@ test('a term that hits max_pages → truncated = true', async () => {
     student: { total: 5, n: 5 },
   }))();
   const jobs = await quiet(() => workday.fetch({ ...ENTRY, max_pages: 2, keywords: ['intern', 'student'], keyword_min_total: 10 }, ctx));
-  assert.equal(jobs.truncated, true);
+  // Canonical partial-read shape (lib/board-truncation.mjs).
+  assert.equal(jobs.truncated?.reason, 'incomplete');
   assert.equal(jobs.keywordSearch.perTerm.intern, 40);
   assert.equal(jobs.keywordSearch.perTerm.student, 5);
 });
@@ -178,7 +179,8 @@ test('a term whose first page fails is skipped; other terms still returned', asy
     return ctx.fetchJson(u, o);
   } }));
   assert.equal(jobs.length, 2);
-  assert.equal(jobs.workdayTruncated, true);
+  // upstream reason values (WORKDAY_TRUNCATED_REASON): a failed first page is transient.
+  assert.equal(jobs.workdayTruncated, 'transient');
   assert.deepEqual(jobs.keywordSearch.perTerm, { intern: 0, student: 2 });
 });
 

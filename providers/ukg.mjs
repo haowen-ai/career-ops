@@ -1,7 +1,7 @@
 // @ts-check
 /** @typedef {import('./_types.js').Provider} Provider */
 
-import { fetchJsonWithRetry } from './_http.mjs';
+import { fetchJsonWithRetry, sleep } from './_http.mjs';
 
 // UKG Pro Recruiting (UltiPro) job board provider (→ tracked_companies:).
 //
@@ -117,12 +117,6 @@ function resolveMaxPages(entry, ctx) {
   const fromEntry = Number.isInteger(v) && v > 0 ? Math.min(v, MAX_PAGES_CAP) : DEFAULT_MAX_PAGES;
   const hint = Number(ctx?.maxPages);
   return Number.isFinite(hint) && hint > 0 ? Math.min(fromEntry, Math.floor(hint)) : fromEntry;
-}
-
-/** @param {number} ms @param {any} ctx */
-function sleep(ms, ctx) {
-  if (typeof ctx?.sleep === 'function') return ctx.sleep(ms);
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** @type {Provider} */

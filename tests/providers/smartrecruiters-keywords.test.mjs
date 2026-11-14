@@ -202,7 +202,7 @@ test('facet honoured by the API → facet rows, no keyword requests, mode facet'
 });
 
 test('facet request errors → fallback to keyword search', async () => {
-  const { ctx, calls } = stub(bigBoard, () => { throw new Error('HTTP 400'); });
+  const { ctx, calls } = stub(bigBoard, () => { const e = new Error('HTTP 400'); e.status = 400; throw e; } /* status set: upstream retries status-less errors */);
   const jobs = await sr.fetch({ ...BASE, keywords: ['intern'], keyword_min_total: 100, facet: true }, ctx);
   assert.deepEqual(calls, [{ q: null, offset: 0 }, { facet: 'internship', offset: 0 }, { q: 'intern', offset: 0 }]);
   assert.equal(jobs.length, 3);

@@ -3,6 +3,7 @@
 
 import { fetchJsonWithRetry, sleep } from './_http.mjs';
 import { decodeEntities } from './_html-entities.mjs';
+import { safeEncodeURIComponent } from './_safe-url.mjs';
 
 // "Activate" career-site provider (→ tracked_companies:).
 //
@@ -154,7 +155,7 @@ export function parseSearchResponse(json, origin) {
     rows.push({
       id: rec.ID.toLowerCase(),
       title,
-      url: `${origin}/search/jobdetails/${encodeURIComponent(slug)}/${rec.ID}`,
+      url: `${origin}/search/jobdetails/${safeEncodeURIComponent(slug)}/${rec.ID}`,
       location,
       postedAt: toEpochMs(rec.PostedDateRaw),
     });

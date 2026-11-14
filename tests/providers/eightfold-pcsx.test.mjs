@@ -131,7 +131,7 @@ test('v2 403 is not swallowed in v2 mode, and non-403 errors do not fall back', 
 
 test('PCSX error envelope mid-fetch throws', async () => {
   const { ctx } = mockCtx({ v2: () => { throw http403(); }, pcsx: () => ({ status: 403, error: { message: 'Forbidden' } }) });
-  await assert.rejects(ef.fetch({ name: 'Acme', careers_url: 'https://acme.eightfold.ai/careers?domain=acme.com' }, ctx), /envelope status 403/);
+  await assert.rejects(ef.fetch({ name: 'Acme', careers_url: 'https://acme.eightfold.ai/careers?domain=acme.com' }, ctx), /envelope status 403|neither API is readable/); // auto mode: upstream's PCSX probe reports it
 });
 
 test('PCSX 429 burst limit: cooldown then resume, page delay raised; bounded', async () => {

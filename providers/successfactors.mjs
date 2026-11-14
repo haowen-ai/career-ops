@@ -53,13 +53,27 @@ import { decodeEntities } from './_html-entities.mjs';
 // otherwise the RMK tile path runs first and, only if it yields zero postings
 // (the empty-shell signature), we fall back to CSB automatically.
 
-const MAX_PAGES = 40; // safety cap on request count (RMK tile pagination)
-const MAX_JOBS = 1000; // default cap on total postings per site (both strategies); entry `max_jobs` overrides
+const MAX_PAGES = 40; // default cap on request count (RMK tile pagination)
+const MAX_JOBS = 1000; // default cap on total postings pulled per site (both strategies)
+// Opt-in ceilings. An entry may raise the defaults with `max_pages` / `max_jobs`
+// up to these bounds; without either key the defaults above apply unchanged.
+const RMK_MAX_PAGES_CEILING = 400;
+const MAX_JOBS_CEILING = 10000;
 
 // CSB knobs.
 const CSB_PAGE_SIZE = 10; // fixed by the /services/recruiting/v1/jobs API
-const CSB_MAX_PAGES_PER_LOCALE = 100; // safety cap per locale (100*10 = 1000 postings)
+const CSB_MAX_PAGES_PER_LOCALE = 100; // default cap per locale (100*10 = 1000 postings)
+const CSB_MAX_PAGES_CEILING = 500; // opt-in ceiling per locale via `max_pages`
 const CSB_MAX_LOCALES = 16; // guard against a tenant advertising an absurd locale list
+// The API's own default sort ("recent", which the site itself sends) is not a
+// stable order: each page request reshuffles ties, so offset paging returned
+// only ~400 distinct ids of BMW's 521 per pass. "date" is nearly stable; a
+// second sweep picks up the few same-day ties it still shuffles across pages.
+const CSB_SORT = 'date';
+const CSB_SWEEPS = 2;
+// Pages per locale fetched in parallel once page 0 has reported totalJobs. Each
+// call returns only 10 postings, so a 500-job tenant was ~50 calls in a row.
+const CSB_PAGE_CONCURRENCY = 6;
 // Locales tried when /search/ discovery yields nothing (fetch failed / markup
 // changed). de_DE + en_US cover the DACH targets this provider is aimed at.
 const CSB_DEFAULT_LOCALES = ['de_DE', 'en_US'];
@@ -67,6 +81,23 @@ const CSB_DEFAULT_LOCALES = ['de_DE', 'en_US'];
 // probe (max_pages:1) hits real postings early and dedup keeps a sensible URL
 // locale for jobs published in several languages.
 const CSB_LOCALE_PRIORITY = ['de_DE', 'en_US', 'en_GB', 'en_EN'];
+
+// Host guard, applied before any robots/provider request: a SuccessFactors board
+// is a public https site on a named domain (jobs.sap.com, jobs.zf.com,
+// jobs.schaeffler.com, careers.te.com, *.successfactors.eu/.com, ...). Branded
+// RMK domains are tenant-chosen and cannot be listed, so the allowlist is
+// "public named host": no credentials, no loopback/private/link-local/metadata
+// address, no bare IP, no non-default port, and https only.
+/** @param {URL} u */
+export function isAllowedHost(u) {
+  if (u.protocol !== 'https:') return false;
+  if (u.username || u.password || u.port) return false;
+  const h = u.hostname.toLowerCase().replace(/\.$/, '');
+  if (!h.includes('.') || h.startsWith('[')) return false; // single-label or IPv6 literal
+  if (/^\d+(?:\.\d+){0,3}$/.test(h) || /^0x[0-9a-f]+$/i.test(h)) return false; // IPv4 in any spelling
+  if (/(^|\.)(localhost|local|internal|localdomain|home\.arpa|lan)$/.test(h)) return false;
+  return true;
+}
 
 /** @param {import('./_types.js').PortalEntry} entry */
 export function resolveConfig(entry) {
@@ -77,7 +108,7 @@ export function resolveConfig(entry) {
   } catch {
     return null;
   }
-  if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+  if (!isAllowedHost(u)) return null;
   // Preserve a brand/tenant path prefix when the configured URL carries one —
   // some holding companies run several acquired brands off one shared RMK
   // instance, disambiguated by a path segment instead of a separate domain
@@ -89,6 +120,11 @@ export function resolveConfig(entry) {
   // slash, so all of those collapse to the same brand-scoped base instead of
   // doubling the endpoint segment onto itself. Single-domain tenants (the
   // common case) have an empty pathname, so base === origin unchanged.
+  //
+  // A saved-search "category" page, /go/<Category-Name>/<numericId>/ (with an
+  // optional /<offset>/ once paginated), is NOT a brand prefix. Upstream strips
+  // it to the tenant root; this fork reads it as the site's own filter (the
+  // category tile endpoint, below), keeping a brand segment in front of /go/.
   let path = u.pathname
     .replace(/\/(?:search|tile-search-results|services\/recruiting\/v1\/jobs)\/?$/i, '')
     .replace(/\/+$/, '');
@@ -97,7 +133,7 @@ export function resolveConfig(entry) {
   // /tile-search-results/category/<id>/ (the apiEndpoint the page itself
   // passes to j2w.SearchResults.init). The brand prefix before /go/ is kept.
   let category = null;
-  const catM = path.match(/^(.*)\/go\/([^/]+)\/(\d+)$/);
+  const catM = path.match(/^(.*)\/go\/([^/]+)\/(\d+)(?:\/\d+)?$/i);
   if (catM) {
     path = catM[1];
     let name = catM[2];
@@ -234,45 +270,54 @@ export function extractLocales(html) {
   return all.slice(0, CSB_MAX_LOCALES);
 }
 
-// CSB posting dates are rendered in the query locale's short format: US tenants
-// send M/D/YY with slashes ("6/18/26"), European (de_DE) tenants send D.M.YY
-// with dots ("20.11.23"). Infer the field order from the separator, treat a
-// 2-digit year as 20YY, and return epoch ms. Anything unexpected yields
-// undefined so a consumer sees "unknown date" rather than a bogus timestamp.
-/** @param {unknown} raw */
-export function parseCsbDate(raw) {
+// CSB posting dates are rendered in the query locale's short format: en_US
+// sends M/D/YY ("6/18/26"), de_DE D.M.YY ("20.11.23"), fr_FR and pt_BR
+// D/M/YYYY ("05/10/2026"), hu_HU "2025. 07. 03.". Slashes are month-first only
+// for the US locales; with no locale they stay month-first as before. A 2-digit
+// year is 20YY. Anything unexpected yields undefined so a consumer sees
+// "unknown date" rather than a bogus timestamp.
+const CSB_MONTH_FIRST_LOCALES = new Set(['en_US', 'es_US']);
+
+/** @param {unknown} raw @param {string} [locale] */
+export function parseCsbDate(raw, locale) {
   if (typeof raw !== 'string') return undefined;
   const s = raw.trim();
-  let a, b, year;
-  let slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
-  let dot = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/);
+  let month, day, year;
+  const slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  const dot = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/);
+  const yearFirst = s.match(/^(\d{4})[.\-/]\s*(\d{1,2})[.\-/]\s*(\d{1,2})\.?$/);
   if (slash) {
-    // M/D/Y
-    [, a, b, year] = slash;
+    [, month, day, year] = slash;
+    if (locale && !CSB_MONTH_FIRST_LOCALES.has(locale)) [month, day] = [day, month];
   } else if (dot) {
-    // D.M.Y — swap to month/day
-    [, b, a, year] = dot;
+    [, day, month, year] = dot;
+  } else if (yearFirst) {
+    [, year, month, day] = yearFirst;
   } else {
     return undefined;
   }
-  const month = Number(a);
-  const day = Number(b);
+  const m = Number(month);
+  const d = Number(day);
   let y = Number(year);
   if (y < 100) y += 2000;
-  if (month < 1 || month > 12 || day < 1 || day > 31) return undefined;
-  const ms = Date.UTC(y, month - 1, day);
-  return Number.isFinite(ms) ? ms : undefined;
+  if (m < 1 || m > 12 || d < 1 || d > 31) return undefined;
+  const ms = Date.UTC(y, m - 1, d);
+  return new Date(ms).getUTCDate() === d ? ms : undefined;
 }
 
 // jobLocationShort is an array of strings like "Karlovy Vary, CZE, 36004<br/>"
 // (one per work location). Strip the trailing <br/> and any other markup, drop
 // empties, and join multiple locations with " / ".
+//
+// The jobs API also appends a comma after the last field ("Bend, OR, USA, ").
+// clean() is shared with titles, which may legitimately end in a comma, so
+// the extra comma comes off here only. Interior commas and a postal code stay.
 /** @param {unknown} raw */
 export function cleanCsbLocation(raw) {
   const parts = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
   const cleaned = [];
   for (const p of parts) {
-    const s = clean(String(p));
+    const s = clean(String(p)).replace(/,+$/, '').trim();
     if (s && !cleaned.includes(s)) cleaned.push(s);
   }
   return cleaned.join(' / ');
@@ -307,22 +352,16 @@ export function parseCsbJobs(json, cfg, locale) {
       title,
       url,
       location: cleanCsbLocation(r.jobLocationShort),
-      postedAt: parseCsbDate(r.unifiedStandardStart),
+      postedAt: parseCsbDate(r.unifiedStandardStart, locale),
     });
   }
   return out;
 }
 
-/**
- * Resolve the total-postings cap: a positive integer `max_jobs` on the entry
- * (it may raise or lower the default), else MAX_JOBS. Page safety caps scale
- * with it, so a raised cap is not cut short by the page limits below.
- */
-function resolveMaxJobs(entry) {
-  const v = entry?.max_jobs;
-  return Number.isInteger(v) && v > 0 ? v : MAX_JOBS;
+/** Positive integer config value, else null. */
+function posInt(v) {
+  return Number.isInteger(v) && v > 0 ? v : null;
 }
-const pageScale = (maxJobs) => Math.max(1, Math.ceil(maxJobs / MAX_JOBS));
 
 // ctx.maxPages is the health probe's pagination hint (verify-portals passes 1):
 // stop after that many pages. Absent → no extra cap.
@@ -331,12 +370,24 @@ function probePageCap(ctx) {
   return Number.isInteger(ctx?.maxPages) && ctx.maxPages > 0 ? ctx.maxPages : Infinity;
 }
 
-/** Resolve the per-locale page cap: positive integer `max_pages`, else default. */
-function resolveCsbMaxPages(entry) {
-  const cap = CSB_MAX_PAGES_PER_LOCALE * pageScale(resolveMaxJobs(entry));
-  const v = entry?.max_pages;
-  if (Number.isInteger(v) && v > 0) return Math.min(v, cap);
-  return cap;
+/**
+ * Resolve the caps for one strategy (upstream #6697). `raised` is true when the
+ * entry asks for more than the defaults — the only case that adds request volume.
+ * A `max_pages` below the CSB default still lowers the per-locale cap; on RMK it
+ * is only honored upward. Fork rule kept: without `max_pages`, the page cap
+ * scales with a raised `max_jobs` (5,000 jobs → 5× the default pages, within
+ * the ceilings), so a raised max_jobs is not cut short by the page cap.
+ * @param {any} entry @param {'rmk'|'csb'} kind
+ */
+export function resolveLimits(entry, kind) {
+  const mp = posInt(entry?.max_pages);
+  const mj = posInt(entry?.max_jobs);
+  const defPages = kind === 'csb' ? CSB_MAX_PAGES_PER_LOCALE : MAX_PAGES;
+  const ceiling = kind === 'csb' ? CSB_MAX_PAGES_CEILING : RMK_MAX_PAGES_CEILING;
+  const maxJobs = mj !== null ? Math.min(mj, MAX_JOBS_CEILING) : MAX_JOBS;
+  let maxPages = Math.min(defPages * Math.max(1, Math.ceil(maxJobs / MAX_JOBS)), ceiling);
+  if (mp !== null) maxPages = kind === 'csb' ? Math.min(mp, ceiling) : Math.max(maxPages, Math.min(mp, ceiling));
+  return { maxPages, maxJobs, raised: maxPages > defPages || maxJobs > MAX_JOBS };
 }
 
 // CSB strategy: discover locales, paginate the JSON jobs API per locale, dedup
@@ -351,10 +402,21 @@ async function fetchCsb(entry, cfg, ctx, opts = {}) {
   return (await csbCrawl(entry, cfg, ctx, opts)).jobs;
 }
 
-// The CSB crawl itself. Returns the jobs plus their ids (for cross-term dedup
-// in keyword mode) and whether a page/job cap stopped it early.
-/** @param {import('./_types.js').PortalEntry} entry @param {any} cfg @param {import('./_types.js').Context} ctx @param {{probe?: boolean}} [opts] */
-async function csbCrawl(entry, cfg, ctx, { probe = false, locales: given = null } = {}) {
+// The CSB crawl itself (upstream's fetchCsb: date sort, two sweeps, parallel
+// pages, truncation warning). Fork additions: the caller may pass the locales
+// (keyword / facet mode), cfg.keywords / cfg.location / cfg.facetFilters go
+// into the request body, and it returns the ids (cross-term dedup) and whether
+// a cap stopped it (`capped`).
+/** @param {import('./_types.js').PortalEntry} entry @param {any} cfg @param {import('./_types.js').Context} ctx @param {{probe?: boolean, quiet?: boolean, locales?: string[]|null}} [opts] */
+async function csbCrawl(entry, cfg, ctx, { probe = false, quiet = false, locales: given = null } = {}) {
+  // The post-RMK probe only looks for the empty-shell signature: defaults, so an
+  // RMK entry's raised max_pages is never read as a CSB raise.
+  const limits = resolveLimits(probe ? { ...entry, max_pages: undefined, max_jobs: undefined } : entry, 'csb');
+  const maxPages = Math.min(limits.maxPages, probePageCap(ctx));
+  // A quiet probe (the entry will be re-read in full at its own limits) only needs
+  // to learn whether the board has any posting, so it stops at the first one and
+  // the full read does not repeat its requests.
+  const maxJobs = quiet ? 1 : limits.maxJobs;
   let locales = CSB_DEFAULT_LOCALES;
   if (Array.isArray(given) && given.length) {
     locales = given; // already discovered by the caller (keyword / facet mode)
@@ -368,10 +430,9 @@ async function csbCrawl(entry, cfg, ctx, { probe = false, locales: given = null 
     }
   }
 
-  const maxPages = Math.min(resolveCsbMaxPages(entry), probePageCap(ctx));
-  const maxJobs = resolveMaxJobs(entry);
   const jobs = [];
   const ids = [];
+  const truncated = [];
   const seen = new Set();
   let capped = false;
   // When EVERY locale fails without a single successful request the board is
@@ -383,58 +444,86 @@ async function csbCrawl(entry, cfg, ctx, { probe = false, locales: given = null 
   let firstErr = null;
 
   for (const locale of locales) {
-    if (jobs.length >= maxJobs) break;
-    let total = null;
-    let page;
-    for (page = 0; page < maxPages; page++) {
-      let json;
-      try {
-        json = await ctx.fetchJson(cfg.jobsApi, {
-          method: 'POST',
-          redirect: 'error',
-          headers: { 'content-type': 'application/json', accept: 'application/json' },
-          body: JSON.stringify({
-            keywords: cfg.keywords || '', locale, location: cfg.location || '', pageNumber: page, sortBy: 'recent',
-            // The site's own filter (CSB student facet): {field: [values]}, values ORed.
-            ...(cfg.facetFilters ? { facetFilters: cfg.facetFilters } : {}),
-          }),
-        });
-      } catch (err) {
-        firstErr ??= err;
-        break; // this locale failed (e.g. 307 legacy redirect) — try the next
-      }
-      succeededOnce = true;
-      if (total === null) {
-        total = typeof json?.totalJobs === 'number' ? json.totalJobs : null;
-      }
-      // Page-fullness checks below use the raw response count, not rows.length:
-      // parseCsbJobs drops id/title-less records, and a full API page with a
-      // few dropped records would otherwise look "short" and stop pagination
-      // before reaching later pages that still hold valid jobs.
-      const rawCount = Array.isArray(json?.jobSearchResult) ? json.jobSearchResult.length : 0;
-      if (rawCount === 0) break;
-      const rows = parseCsbJobs(json, cfg, locale);
-
-      for (const row of rows) {
-        if (seen.has(row.id)) continue;
-        seen.add(row.id);
-        const job = { title: row.title, url: row.url, company: entry.name, location: row.location };
-        if (typeof row.postedAt === 'number') job.postedAt = row.postedAt;
-        jobs.push(job);
-        ids.push(row.id);
-        if (jobs.length >= maxJobs) break;
-      }
-      if (jobs.length >= maxJobs) {
-        capped = true;
-        break;
-      }
-      // Stop once we've covered the reported total, or on a short page.
-      if (total !== null && (page + 1) * CSB_PAGE_SIZE >= total) break;
-      if (rawCount < CSB_PAGE_SIZE) break;
+    if (jobs.length >= maxJobs) {
+      truncated.push(`locales not read: ${locales.slice(locales.indexOf(locale)).join(', ')}`);
+      break;
     }
-    // The loop ran out of pages without a natural stop: more may remain.
-    if (page === maxPages) capped = true;
+    const fetchPage = (page) => ctx.fetchJson(cfg.jobsApi, {
+      method: 'POST',
+      redirect: 'error',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({
+        keywords: cfg.keywords || '', locale, location: cfg.location || '', pageNumber: page, sortBy: CSB_SORT,
+        // The site's own filter (CSB student facet): {field: [values]}, values ORed.
+        ...(cfg.facetFilters ? { facetFilters: cfg.facetFilters } : {}),
+      }),
+    });
+    let total = null;
+    let failed = false;
+    // True only when a cap (page or job) ended the read of this locale. A short
+    // page, an empty page, the reported total, or a fetch error are not caps.
+    let capHit = false;
+    const localeIds = new Set();
+    for (let sweep = 0; sweep < CSB_SWEEPS; sweep++) {
+      const lastPageFor = (count) => Math.min(maxPages - 1, Math.ceil(count / CSB_PAGE_SIZE) - 1);
+      let lastPage = total === null ? maxPages - 1 : lastPageFor(total);
+      let page = 0;
+      // Page 0 carries totalJobs. With a total known, the remaining pages go out
+      // CSB_PAGE_CONCURRENCY at a time; without one we cannot tell where the
+      // board ends, so pages stay one at a time and a short page stops the loop.
+      pages: while (page <= lastPage) {
+        const width = total === null ? 1 : CSB_PAGE_CONCURRENCY;
+        const batch = Array.from({ length: Math.min(width, lastPage - page + 1) }, (_, i) => page + i);
+        const results = await Promise.allSettled(batch.map(fetchPage));
+        for (let i = 0; i < batch.length; i++) {
+          const result = results[i];
+          if (result.status === 'rejected') {
+            firstErr ??= result.reason;
+            failed = true;
+            break pages; // this locale failed (e.g. 307 legacy redirect) — try the next
+          }
+          succeededOnce = true;
+          const json = result.value;
+          if (total === null) {
+            total = typeof json?.totalJobs === 'number' ? json.totalJobs : null;
+            if (total !== null) lastPage = lastPageFor(total);
+          }
+          // Page-fullness checks below use the raw response count, not rows.length:
+          // parseCsbJobs drops id/title-less records, and a full API page with a
+          // few dropped records would otherwise look "short" and stop pagination
+          // before reaching later pages that still hold valid jobs.
+          const rawCount = Array.isArray(json?.jobSearchResult) ? json.jobSearchResult.length : 0;
+          if (rawCount === 0) break pages;
+          const rows = parseCsbJobs(json, cfg, locale);
+
+          for (const row of rows) {
+            localeIds.add(row.id);
+            if (seen.has(row.id)) continue;
+            seen.add(row.id);
+            const job = { title: row.title, url: row.url, company: entry.name, location: row.location };
+            if (typeof row.postedAt === 'number') job.postedAt = row.postedAt;
+            jobs.push(job);
+            ids.push(row.id);
+            if (jobs.length >= maxJobs) {
+              capHit = total === null || localeIds.size < total;
+              break pages;
+            }
+          }
+          if (batch[i] === maxPages - 1 && rawCount >= CSB_PAGE_SIZE && (total === null || (batch[i] + 1) * CSB_PAGE_SIZE < total)) capHit = true;
+          // Stop once we've covered the reported total, or on a short page.
+          if (total !== null && (batch[i] + 1) * CSB_PAGE_SIZE >= total) break pages;
+          if (rawCount < CSB_PAGE_SIZE) break pages;
+        }
+        page = batch[batch.length - 1] + 1;
+      }
+      if (failed || total === null || localeIds.size >= total || jobs.length >= maxJobs) break;
+    }
+    // A cap, not a failure or the natural end, stopped this locale: say so instead
+    // of returning a silent subset.
+    if (capHit) capped = true;
+    if (capHit) truncated.push(total !== null ? `${locale} ${localeIds.size} of ${total} jobs` : `${locale} ${localeIds.size} jobs, total unknown`);
   }
+  if (truncated.length && !quiet) warnTruncated(entry, truncated.join('; '), 'csb', maxPages, maxJobs);
   if (!probe && !succeededOnce && firstErr) throw firstErr;
   return { jobs, ids, capped };
 }
@@ -528,41 +617,65 @@ async function discoverCsbFacet(cfg, ctx, html, locales, re) {
   return { facet, locales: hitLocales, boardTotal, failedLocales };
 }
 
+// Names the entry and the knobs that raise the cap that stopped the read, in
+// the wording eightfold.mjs uses for the same situation.
+/** @param {any} entry @param {string} what @param {'rmk'|'csb'} kind @param {number} maxPages @param {number} maxJobs */
+function warnTruncated(entry, what, kind, maxPages, maxJobs) {
+  const pages = kind === 'csb' ? `max_pages=${maxPages} per locale` : `max_pages=${maxPages}`;
+  console.error(`⚠️  successfactors: ${entry.name} truncated at ${pages}, max_jobs=${maxJobs} (${what}) — raise max_pages and/or max_jobs on this entry for more`);
+}
+
 // RMK strategy: the original /tile-search-results/ HTML-fragment scraper.
 /** @param {import('./_types.js').PortalEntry} entry @param {any} cfg @param {import('./_types.js').Context} ctx */
 async function fetchRmk(entry, cfg, ctx) {
   return (await rmkCrawl(entry, cfg, ctx)).jobs;
 }
 
-// The RMK crawl itself. Returns the jobs plus their tile ids (for cross-term
-// dedup in keyword mode) and whether max_jobs or the page cap stopped it.
+// The RMK crawl itself (upstream's fetchRmk: raw-row paging, cap warning).
+// Fork additions: the careers_url / term / facet search filter on every tile
+// request (tileUrl), the tile ids (cross-term dedup), `capped`, and `expected`
+// (a count the site stated for this view) that stops the crawl once that many
+// postings are read: past the last page some tenants (Under Armour 2026-11-11)
+// return a fixed block of unrelated postings instead of nothing.
 /** @param {import('./_types.js').PortalEntry} entry @param {any} cfg @param {import('./_types.js').Context} ctx */
-// `expected` (a count the site stated for this view) stops the crawl once
-// that many postings are read: past the last page some tenants (Under Armour
-// 2026-11-11) return a fixed block of unrelated postings instead of nothing.
 async function rmkCrawl(entry, cfg, ctx, { expected = null } = {}) {
   if (expected === 0) return { jobs: [], ids: [], capped: false };
-  const maxJobs = resolveMaxJobs(entry);
-  const maxPages = Math.min(MAX_PAGES * pageScale(maxJobs), probePageCap(ctx));
+  // A bounded probe (ctx.maxPages, e.g. verify-portals) never raises the cap, so
+  // it stops at ctx.maxPages without warning.
+  const probeLimit = posInt(ctx.maxPages);
+  const { maxPages: cappedPages, maxJobs } = resolveLimits(
+    probeLimit ? { ...entry, max_pages: undefined, max_jobs: undefined } : entry, 'rmk');
+  const maxPages = probeLimit ? Math.min(cappedPages, probeLimit) : cappedPages;
   const jobs = [];
   const ids = [];
   const seen = new Set();
-  let capped = false;
+  const seenRaw = new Set();
   let startrow = 0;
-  let page;
-  for (page = 0; page < maxPages; page++) {
+  // True when the loop ended on a cap while the last page was still delivering
+  // new postings — i.e. the board very likely has more. The RMK fragment carries
+  // no total, so the warning can only say "at least".
+  let capped = false;
+  let pageSize = 0;
+  for (let page = 0; page < maxPages; page++) {
     const htmlText = await ctx.fetchText(tileUrl(cfg, startrow), {
       redirect: 'error',
       headers: { accept: 'text/html' },
     });
     const tiles = parseTiles(htmlText, cfg.jobBase);
-    if (tiles.length === 0) break;
+    // Pagination follows the rows the source returned, not the ones parseTiles kept:
+    // a title-less tile must not end the walk or leave the next offset overlapping.
+    const rawIds = [...htmlText.matchAll(/<li class="job-tile job-id-(\d+)/g)].map((m) => m[1]);
+    if (rawIds.length === 0) break;
+    // Fullness is judged on the rows the source returned, not on the tiles that
+    // survived parseTiles' filtering.
+    const rawTiles = rawIds.length;
+    if (page === 0) pageSize = rawTiles;
 
-    let fresh = 0;
+    let fresh = rawIds.filter((id) => !seenRaw.has(id)).length;
+    for (const id of rawIds) seenRaw.add(id);
     for (const tile of tiles) {
       if (seen.has(tile.id)) continue;
       seen.add(tile.id);
-      fresh++;
       ids.push(tile.id);
       jobs.push({
         title: tile.title,
@@ -574,17 +687,14 @@ async function rmkCrawl(entry, cfg, ctx, { expected = null } = {}) {
     // No new ids this page → server ignored the offset (or we've looped). Stop.
     if (fresh === 0) break;
     if (expected !== null && jobs.length >= expected && jobs.length < maxJobs) break;
-    if (jobs.length >= maxJobs) {
-      capped = true;
-      console.error(`⚠️  successfactors: ${entry.name} stopped at max_jobs=${maxJobs} — raise max_jobs on this entry for more`);
+    startrow += rawTiles;
+    if (jobs.length >= maxJobs || page === maxPages - 1) {
+      // A short final page means the board ended on its own, not at the cap.
+      capped = !probeLimit && (jobs.length >= maxJobs || rawTiles >= pageSize);
       break;
     }
-    startrow += tiles.length;
-    if (page === maxPages - 1) {
-      console.error(`⚠️  successfactors: ${entry.name} truncated at ${maxPages} tile pages (${jobs.length} jobs) — raise max_jobs on this entry for more`);
-    }
   }
-  if (page === maxPages) capped = true;
+  if (capped) warnTruncated(entry, `stopped at ${Math.min(jobs.length, maxJobs)} jobs, more were still being returned`, 'rmk', maxPages, maxJobs);
   // The cap is checked between pages, so the last page can overshoot it; a
   // stated count trims the same way (anything past it is the filler block).
   const keep = expected !== null && expected < maxJobs ? expected : maxJobs;
@@ -849,7 +959,33 @@ async function fetchFull(entry, cfg, ctx) {
   // RMK answered (healthy, possibly legitimately empty) — the CSB call here
   // is only a probe for the empty-shell signature, so it must not turn a
   // failing/absent CSB endpoint into a dead-board throw.
-  return fetchCsb(entry, cfg, ctx, { probe: true });
+  // An opted-in entry (raised max_pages/max_jobs) that turns out to be CSB gets
+  // a second read at its own limits; the bounded probe stays quiet.
+  const raised = resolveLimits(entry, 'csb').raised;
+  const probed = await fetchCsb(entry, cfg, ctx, { probe: true, quiet: raised });
+  if (raised && probed.length > 0) {
+    // The probe just saw a posting, so a failed or partial full read (the locale
+    // that held it rejected or came back empty) must not shrink the board:
+    // keep the probed posting and say so.
+    let full = [];
+    let failure = null;
+    try {
+      full = await fetchCsb(entry, cfg, ctx);
+    } catch (err) {
+      failure = err;
+    }
+    // Compare by the CSB posting id (the url ends /{id}-{locale}); the slug and the
+    // locale can differ between the two reads of the same posting.
+    const idOf = (j) => /\/(\d+)-[A-Za-z_]+\/?$/.exec(j.url)?.[1] ?? j.url;
+    const have = new Set(full.map(idOf));
+    const missing = probed.filter((j) => !have.has(idOf(j)));
+    if (failure || missing.length > 0) {
+      console.error(`⚠️  successfactors: ${entry.name} full read at the raised limits ${failure ? `failed (${failure.message})` : 'missed a posting the probe found'} — keeping the probed posting; the result may be partial`);
+      return [...full, ...missing];
+    }
+    return full;
+  }
+  return probed;
 }
 
 // Run the crawl once per term and merge: term order, then page order; dedup by
@@ -932,7 +1068,7 @@ export default {
 
   async fetch(entry, ctx) {
     const cfg = resolveConfig(entry);
-    if (!cfg) throw new Error(`successfactors: cannot resolve origin for ${entry.name}`);
+    if (!cfg) throw new Error(`successfactors: cannot resolve a public https host for ${entry.name}`);
 
     const terms = normalizeKeywords(entry.keywords);
     // A health probe (ctx.maxPages) only checks the board is live: unfiltered
