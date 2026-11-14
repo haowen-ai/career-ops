@@ -168,13 +168,18 @@ function resolveMaxJobs(entry) {
   return Number.isInteger(v) && v > 0 ? Math.min(v, MAX_JOBS_CAP) : DEFAULT_MAX_JOBS;
 }
 
+// Single-page response cap (see fetch).
+const ACTIVATE_MAX_BYTES = 64 * 1024 * 1024;
+
 /** @type {Provider} */
 export default {
   id: 'activate',
 
   async fetch(entry, ctx) {
     const cfg = resolveConfig(entry); // throws before any request
-    const reqOpts = { redirect: 'error', timeoutMs: TIMEOUT_MS, headers: { 'x-requested-with': 'XMLHttpRequest' } };
+    // The whole board comes back in one response (Ross Stores: ~7,200 rows, over the shared 10 MB
+    // default from upstream 1.40), so this provider sets its own bounded ceiling.
+    const reqOpts = { redirect: 'error', timeoutMs: TIMEOUT_MS, maxBytes: ACTIVATE_MAX_BYTES, headers: { 'x-requested-with': 'XMLHttpRequest' } };
     const probing = Number(ctx?.maxPages) > 0;
     const maxJobs = resolveMaxJobs(entry);
 
