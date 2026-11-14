@@ -374,6 +374,16 @@ The scanner comes with **100+ companies** ready to scan and **45+ search queries
 **Automation:** n8n, Zapier, Make.com
 **European:** Factorial, Attio, Tinybird, Clarity AI, Travelperk
 
+**Company catalog (this fork).** `templates/portals.catalog.yml` lists about 790 large U.S. employers with tested scan settings (provider, careers URL, search options) and a `status` of `ok`, `browser` (the site blocks scripted requests; read it in a browser) or `broken`. It is a shared catalog, not a personal configuration. Pick the companies that fit your own search, list their names one per line, and build your `portals.yml`:
+
+```bash
+node scripts/build-portals.mjs --select my-companies.txt --base templates/portals.example.yml
+```
+
+Names must match the catalog (case-insensitive); unknown names stop the build so you can add those companies first. When an agent sets up a search, it reads your preferences (industries, company size, locations, roles, named companies), picks matching catalog entries, adds missing companies with the provider modules, and checks the result with `node validate-portals.mjs`. Maintainers refresh the catalog with `node scripts/export-catalog.mjs`, which keeps only scan settings and refuses to write personal text.
+
+This fork reports version `1.32.0-cj.1` in `package.json` (CAREER JOURNAL pins it). Do not run `npm run update` here: it applies upstream release files and can drop this fork's providers. Pull upstream changes with `git merge` instead.
+
 **Job boards searched:** 55+ provider modules cover ATS APIs, board-wide feeds, XML/RSS feeds, markdown feeds, and local parsers. See [Supported job boards](docs/SUPPORTED_JOB_BOARDS.md) for the full table.
 
 By default `node scan.mjs` (a.k.a. `npm run scan`) trusts what each ATS feed returns. Some companies leave stale postings in their public API even after the role is closed, so those expired entries can leak into `pipeline.md`. Pass `--verify` to launch Playwright after the API pass and drop expired postings before they hit the pipeline:

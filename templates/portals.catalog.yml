@@ -1,0 +1,3384 @@
+# Company catalog for the CareerOps portal scanner (exported by scripts/export-catalog.mjs).
+# Shared list of employers with tested scan settings. It is not a personal configuration:
+# pick the companies that fit your search and build your own portals.yml with
+#   node scripts/build-portals.mjs --select <names.txt>
+# status: ok = scanned by the provider; browser = the site blocks scripted requests, read it in a
+# browser; broken = disabled, left here for reference.
+keyword_search:
+  min_total: 400
+  terms:
+    - intern
+    - internship
+    - co-op
+    - student
+    - summer analyst
+    - summer associate
+    - graduate program
+    - early career
+  providers:
+    workday:
+      terms:
+        - intern
+        - internship
+        - student
+        - summer analyst
+        - summer associate
+        - early career
+  facet_values:
+    - intern
+    - internship
+    - co-op
+    - coop
+    - student
+    - graduate
+    - early career
+    - early talent
+    - campus
+    - university
+tracked_companies:
+  - name: OpenAI
+    careers_url: https://jobs.ashbyhq.com/openai
+    status: ok
+  - name: Anthropic
+    careers_url: https://job-boards.greenhouse.io/anthropic
+    api: https://boards-api.greenhouse.io/v1/boards/anthropic/jobs
+    status: ok
+  - name: Scale AI
+    careers_url: https://job-boards.greenhouse.io/scaleai
+    api: https://boards-api.greenhouse.io/v1/boards/scaleai/jobs
+    status: ok
+  - name: Databricks
+    careers_url: https://job-boards.greenhouse.io/databricks
+    api: https://boards-api.greenhouse.io/v1/boards/databricks/jobs
+    status: ok
+  - name: Snowflake
+    careers_url: https://jobs.ashbyhq.com/snowflake
+    status: ok
+  - name: Pinecone
+    careers_url: https://jobs.ashbyhq.com/pinecone
+    status: ok
+  - name: Cohere
+    careers_url: https://jobs.ashbyhq.com/cohere
+    status: ok
+  - name: Perplexity
+    careers_url: https://jobs.ashbyhq.com/perplexity
+    status: ok
+  - name: CoreWeave (incl. Weights & Biases)
+    careers_url: https://job-boards.greenhouse.io/coreweave
+    api: https://boards-api.greenhouse.io/v1/boards/coreweave/jobs
+    status: ok
+  - name: xAI
+    careers_url: https://job-boards.greenhouse.io/xai
+    api: https://boards-api.greenhouse.io/v1/boards/xai/jobs
+    status: ok
+  - name: Character.AI
+    careers_url: https://jobs.ashbyhq.com/character
+    status: ok
+  - name: Glean
+    careers_url: https://job-boards.greenhouse.io/gleanwork
+    api: https://boards-api.greenhouse.io/v1/boards/gleanwork/jobs
+    status: ok
+  - name: Harvey
+    careers_url: https://jobs.ashbyhq.com/harvey
+    status: ok
+  - name: Anyscale
+    careers_url: https://jobs.ashbyhq.com/anyscale
+    status: ok
+  - name: Together AI
+    careers_url: https://job-boards.greenhouse.io/togetherai
+    api: https://boards-api.greenhouse.io/v1/boards/togetherai/jobs
+    status: ok
+  - name: Fireworks AI
+    careers_url: https://jobs.ashbyhq.com/fireworks
+    status: ok
+  - name: Modal
+    careers_url: https://jobs.ashbyhq.com/modal
+    status: ok
+  - name: Replit
+    careers_url: https://jobs.ashbyhq.com/replit
+    status: ok
+  - name: Cursor (Anysphere)
+    careers_url: https://jobs.ashbyhq.com/cursor
+    status: ok
+  - name: Sierra
+    careers_url: https://jobs.ashbyhq.com/sierra
+    status: ok
+  - name: Snorkel AI
+    careers_url: https://job-boards.greenhouse.io/snorkelai
+    api: https://boards-api.greenhouse.io/v1/boards/snorkelai/jobs
+    status: ok
+  - name: Dataiku
+    careers_url: https://job-boards.greenhouse.io/dataiku
+    api: https://boards-api.greenhouse.io/v1/boards/dataiku/jobs
+    status: ok
+  - name: Fivetran
+    careers_url: https://job-boards.greenhouse.io/fivetran
+    api: https://boards-api.greenhouse.io/v1/boards/fivetran/jobs
+    status: ok
+  - name: Confluent
+    careers_url: https://www.ibm.com/careers/search?q=confluent
+    provider: ibm
+    ibm:
+      title_query: confluent
+      company: Confluent
+    status: ok
+  - name: ClickHouse
+    careers_url: https://jobs.ashbyhq.com/clickhouse
+    status: ok
+  - name: Hex
+    careers_url: https://jobs.ashbyhq.com/hex
+    status: ok
+  - name: Sigma Computing
+    careers_url: https://job-boards.greenhouse.io/sigmacomputing
+    api: https://boards-api.greenhouse.io/v1/boards/sigmacomputing/jobs
+    status: ok
+  - name: Cerebras
+    careers_url: https://jobs.ashbyhq.com/cerebras
+    status: ok
+  - name: Waymo
+    careers_url: https://job-boards.greenhouse.io/waymo
+    api: https://boards-api.greenhouse.io/v1/boards/waymo/jobs
+    status: ok
+  - name: Nuro
+    careers_url: https://job-boards.greenhouse.io/nuro
+    api: https://boards-api.greenhouse.io/v1/boards/nuro/jobs
+    status: ok
+  - name: Abridge
+    careers_url: https://jobs.ashbyhq.com/abridge
+    status: ok
+  - name: Mercor
+    careers_url: https://jobs.ashbyhq.com/mercor
+    status: ok
+  - name: Elastic
+    careers_url: https://job-boards.greenhouse.io/elastic
+    api: https://boards-api.greenhouse.io/v1/boards/elastic/jobs
+    status: ok
+  - name: Allen Institute for AI
+    careers_url: https://job-boards.greenhouse.io/thealleninstitute
+    api: https://boards-api.greenhouse.io/v1/boards/thealleninstitute/jobs
+    status: ok
+  - name: NVIDIA
+    careers_url: https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: Stripe
+    careers_url: https://job-boards.greenhouse.io/stripe
+    api: https://boards-api.greenhouse.io/v1/boards/stripe/jobs
+    status: ok
+  - name: Ramp
+    careers_url: https://jobs.ashbyhq.com/ramp
+    status: ok
+  - name: Plaid
+    careers_url: https://jobs.ashbyhq.com/plaid
+    status: ok
+  - name: Robinhood
+    careers_url: https://job-boards.greenhouse.io/robinhood
+    api: https://boards-api.greenhouse.io/v1/boards/robinhood/jobs
+    status: ok
+  - name: Coinbase
+    careers_url: https://job-boards.greenhouse.io/coinbase
+    api: https://boards-api.greenhouse.io/v1/boards/coinbase/jobs
+    status: ok
+  - name: Airbnb
+    careers_url: https://job-boards.greenhouse.io/airbnb
+    api: https://boards-api.greenhouse.io/v1/boards/airbnb/jobs
+    status: ok
+  - name: Lyft
+    careers_url: https://job-boards.greenhouse.io/lyft
+    api: https://boards-api.greenhouse.io/v1/boards/lyft/jobs
+    status: ok
+  - name: DoorDash
+    careers_url: https://job-boards.greenhouse.io/doordashusa
+    api: https://boards-api.greenhouse.io/v1/boards/doordashusa/jobs
+    status: ok
+  - name: Instacart
+    careers_url: https://job-boards.greenhouse.io/instacart
+    api: https://boards-api.greenhouse.io/v1/boards/instacart/jobs
+    status: ok
+  - name: Pinterest
+    careers_url: https://job-boards.greenhouse.io/pinterest
+    api: https://boards-api.greenhouse.io/v1/boards/pinterest/jobs
+    status: ok
+  - name: Reddit
+    careers_url: https://job-boards.greenhouse.io/reddit
+    api: https://boards-api.greenhouse.io/v1/boards/reddit/jobs
+    status: ok
+  - name: Spotify
+    careers_url: https://jobs.lever.co/spotify
+    timeout_ms: 60000
+    status: ok
+  - name: Figma
+    careers_url: https://job-boards.greenhouse.io/figma
+    api: https://boards-api.greenhouse.io/v1/boards/figma/jobs
+    status: ok
+  - name: Notion
+    careers_url: https://jobs.ashbyhq.com/notion
+    status: ok
+  - name: Discord
+    careers_url: https://job-boards.greenhouse.io/discord
+    api: https://boards-api.greenhouse.io/v1/boards/discord/jobs
+    status: ok
+  - name: Datadog
+    careers_url: https://job-boards.greenhouse.io/datadog
+    api: https://boards-api.greenhouse.io/v1/boards/datadog/jobs
+    status: ok
+  - name: MongoDB
+    careers_url: https://job-boards.greenhouse.io/mongodb
+    api: https://boards-api.greenhouse.io/v1/boards/mongodb/jobs
+    status: ok
+  - name: Palantir
+    careers_url: https://jobs.lever.co/palantir
+    status: ok
+  - name: Affirm
+    careers_url: https://job-boards.greenhouse.io/affirm
+    api: https://boards-api.greenhouse.io/v1/boards/affirm/jobs
+    status: ok
+  - name: Chime
+    careers_url: https://job-boards.greenhouse.io/chime
+    api: https://boards-api.greenhouse.io/v1/boards/chime/jobs
+    status: ok
+  - name: Brex
+    careers_url: https://job-boards.greenhouse.io/brex
+    api: https://boards-api.greenhouse.io/v1/boards/brex/jobs
+    status: ok
+  - name: SoFi
+    careers_url: https://job-boards.greenhouse.io/sofi
+    api: https://boards-api.greenhouse.io/v1/boards/sofi/jobs
+    status: ok
+  - name: Dropbox
+    careers_url: https://job-boards.greenhouse.io/dropbox
+    api: https://boards-api.greenhouse.io/v1/boards/dropbox/jobs
+    status: ok
+  - name: Roblox
+    careers_url: https://job-boards.greenhouse.io/roblox
+    api: https://boards-api.greenhouse.io/v1/boards/roblox/jobs
+    status: ok
+  - name: Duolingo
+    careers_url: https://job-boards.greenhouse.io/duolingo
+    api: https://boards-api.greenhouse.io/v1/boards/duolingo/jobs
+    status: ok
+  - name: Asana
+    careers_url: https://job-boards.greenhouse.io/asana
+    api: https://boards-api.greenhouse.io/v1/boards/asana/jobs
+    status: ok
+  - name: Samsara
+    careers_url: https://job-boards.greenhouse.io/samsara
+    api: https://boards-api.greenhouse.io/v1/boards/samsara/jobs
+    status: ok
+  - name: Cloudflare
+    careers_url: https://job-boards.greenhouse.io/cloudflare
+    api: https://boards-api.greenhouse.io/v1/boards/cloudflare/jobs
+    status: ok
+  - name: Twilio
+    careers_url: https://job-boards.greenhouse.io/twilio
+    api: https://boards-api.greenhouse.io/v1/boards/twilio/jobs
+    status: ok
+  - name: Airtable
+    careers_url: https://job-boards.greenhouse.io/airtable
+    api: https://boards-api.greenhouse.io/v1/boards/airtable/jobs
+    status: ok
+  - name: Gusto
+    careers_url: https://job-boards.greenhouse.io/gusto
+    api: https://boards-api.greenhouse.io/v1/boards/gusto/jobs
+    status: ok
+  - name: Toast
+    careers_url: https://job-boards.greenhouse.io/toast
+    api: https://boards-api.greenhouse.io/v1/boards/toast/jobs
+    status: ok
+  - name: Faire
+    careers_url: https://job-boards.greenhouse.io/faire
+    api: https://boards-api.greenhouse.io/v1/boards/faire/jobs
+    status: ok
+  - name: Mercury
+    careers_url: https://job-boards.greenhouse.io/mercury
+    api: https://boards-api.greenhouse.io/v1/boards/mercury/jobs
+    status: ok
+  - name: Gemini
+    careers_url: https://job-boards.greenhouse.io/gemini
+    api: https://boards-api.greenhouse.io/v1/boards/gemini/jobs
+    status: ok
+  - name: Kalshi
+    careers_url: https://job-boards.greenhouse.io/kalshi
+    api: https://boards-api.greenhouse.io/v1/boards/kalshi/jobs
+    status: ok
+  - name: Wealthfront
+    careers_url: https://jobs.lever.co/wealthfront
+    status: ok
+  - name: Vercel
+    careers_url: https://job-boards.greenhouse.io/vercel
+    api: https://boards-api.greenhouse.io/v1/boards/vercel/jobs
+    status: ok
+  - name: Rippling
+    careers_url: https://ats.rippling.com/rippling/jobs
+    status: ok
+  - name: Smartsheet
+    careers_url: https://job-boards.greenhouse.io/smartsheet
+    api: https://boards-api.greenhouse.io/v1/boards/smartsheet/jobs
+    status: ok
+  - name: Qualtrics
+    careers_url: https://job-boards.greenhouse.io/qualtrics
+    api: https://boards-api.greenhouse.io/v1/boards/qualtrics/jobs
+    status: ok
+  - name: Salesforce
+    careers_url: https://salesforce.wd12.myworkdayjobs.com/External_Career_Site
+    provider: workday
+    status: ok
+  - name: Adobe
+    careers_url: https://adobe.wd5.myworkdayjobs.com/external_experienced
+    provider: workday
+    status: ok
+  - name: Capital One
+    careers_url: https://capitalone.wd12.myworkdayjobs.com/Capital_One
+    provider: workday
+    facet: false
+    max_pages: 1500
+    status: ok
+  - name: The New York Times
+    careers_url: https://job-boards.greenhouse.io/thenewyorktimes
+    api: https://boards-api.greenhouse.io/v1/boards/thenewyorktimes/jobs
+    status: ok
+  - name: Squarespace
+    careers_url: https://job-boards.greenhouse.io/squarespace
+    api: https://boards-api.greenhouse.io/v1/boards/squarespace/jobs
+    status: ok
+  - name: SeatGeek
+    careers_url: https://job-boards.greenhouse.io/seatgeek
+    api: https://boards-api.greenhouse.io/v1/boards/seatgeek/jobs
+    status: ok
+  - name: Oscar Health
+    careers_url: https://job-boards.greenhouse.io/oscar
+    api: https://boards-api.greenhouse.io/v1/boards/oscar/jobs
+    status: ok
+  - name: Vox Media
+    careers_url: https://job-boards.greenhouse.io/voxmedia
+    api: https://boards-api.greenhouse.io/v1/boards/voxmedia/jobs
+    status: ok
+  - name: BuzzFeed
+    careers_url: https://www.buzzfeed.com/about/jobs
+    api: https://boards-api.greenhouse.io/v1/boards/buzzfeed/jobs
+    status: broken
+  - name: Zocdoc
+    careers_url: https://job-boards.greenhouse.io/zocdoc
+    api: https://boards-api.greenhouse.io/v1/boards/zocdoc/jobs
+    status: ok
+  - name: Flatiron Health
+    careers_url: https://job-boards.greenhouse.io/flatironhealth
+    api: https://boards-api.greenhouse.io/v1/boards/flatironhealth/jobs
+    status: ok
+  - name: Betterment
+    careers_url: https://job-boards.greenhouse.io/betterment
+    api: https://boards-api.greenhouse.io/v1/boards/betterment/jobs
+    status: ok
+  - name: Lemonade
+    careers_url: https://jobs.ashbyhq.com/lemonade
+    status: ok
+  - name: Axios
+    careers_url: https://job-boards.greenhouse.io/axios
+    api: https://boards-api.greenhouse.io/v1/boards/axios/jobs
+    status: ok
+  - name: Jane Street
+    careers_url: https://job-boards.greenhouse.io/janestreet
+    api: https://boards-api.greenhouse.io/v1/boards/janestreet/jobs
+    status: ok
+  - name: Hudson River Trading
+    careers_url: https://job-boards.greenhouse.io/wehrtyou
+    api: https://boards-api.greenhouse.io/v1/boards/wehrtyou/jobs
+    status: ok
+  - name: Point72
+    careers_url: https://job-boards.greenhouse.io/point72
+    api: https://boards-api.greenhouse.io/v1/boards/point72/jobs
+    status: ok
+  - name: DRW
+    careers_url: https://job-boards.greenhouse.io/drweng
+    api: https://boards-api.greenhouse.io/v1/boards/drweng/jobs
+    status: ok
+  - name: IMC Trading
+    careers_url: https://job-boards.greenhouse.io/imc
+    api: https://boards-api.greenhouse.io/v1/boards/imc/jobs
+    status: ok
+  - name: Optiver
+    careers_url: https://job-boards.greenhouse.io/optiverus
+    api: https://boards-api.greenhouse.io/v1/boards/optiverus/jobs
+    status: ok
+  - name: Five Rings
+    careers_url: https://job-boards.greenhouse.io/fiveringsllc
+    api: https://boards-api.greenhouse.io/v1/boards/fiveringsllc/jobs
+    status: ok
+  - name: Jump Trading
+    careers_url: https://job-boards.greenhouse.io/jumptrading
+    api: https://boards-api.greenhouse.io/v1/boards/jumptrading/jobs
+    status: ok
+  - name: Schonfeld
+    careers_url: https://careers.smartrecruiters.com/schonfeld
+    status: ok
+  - name: Tower Research Capital
+    careers_url: https://job-boards.greenhouse.io/towerresearchcapital
+    api: https://boards-api.greenhouse.io/v1/boards/towerresearchcapital/jobs
+    status: ok
+  - name: Old Mission Capital
+    careers_url: https://jobs.ashbyhq.com/old-mission-capital
+    status: ok
+  - name: Virtu Financial
+    careers_url: https://job-boards.greenhouse.io/virtu
+    api: https://boards-api.greenhouse.io/v1/boards/virtu/jobs
+    status: ok
+  - name: XTX Markets
+    careers_url: https://job-boards.greenhouse.io/xtxmarketstechnologies
+    api: https://boards-api.greenhouse.io/v1/boards/xtxmarketstechnologies/jobs
+    status: ok
+  - name: Squarepoint Capital
+    careers_url: https://job-boards.greenhouse.io/squarepointcapital
+    api: https://boards-api.greenhouse.io/v1/boards/squarepointcapital/jobs
+    status: ok
+  - name: PDT Partners
+    careers_url: https://job-boards.greenhouse.io/pdtpartners
+    api: https://boards-api.greenhouse.io/v1/boards/pdtpartners/jobs
+    status: ok
+  - name: Bridgewater Associates
+    careers_url: https://job-boards.greenhouse.io/bridgewater89
+    api: https://boards-api.greenhouse.io/v1/boards/bridgewater89/jobs
+    status: ok
+  - name: AQR Capital Management
+    careers_url: https://job-boards.greenhouse.io/aqr
+    api: https://boards-api.greenhouse.io/v1/boards/aqr/jobs
+    status: ok
+  - name: Voleon
+    careers_url: https://jobs.ashbyhq.com/voleon
+    status: ok
+  - name: Engineers Gate
+    careers_url: https://job-boards.greenhouse.io/engineersgate
+    api: https://boards-api.greenhouse.io/v1/boards/engineersgate/jobs
+    status: ok
+  - name: Hugging Face
+    careers_url: https://apply.workable.com/huggingface
+    status: ok
+  - name: McDonald's
+    careers_url: https://jobs.mcdonalds.com
+    provider: successfactors
+    status: ok
+  - name: Chipotle
+    careers_url: https://chipotle.wd5.myworkdayjobs.com/ChipotleCareers
+    provider: workday
+    status: ok
+  - name: Yum! Brands
+    careers_url: https://eczd.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Restaurant Brands International
+    careers_url: https://rbi.wd3.myworkdayjobs.com/RBI_External_Career_Site
+    provider: workday
+    status: ok
+  - name: Papa John's
+    careers_url: https://papajohns.wd1.myworkdayjobs.com/PapaJohnsCareers
+    provider: workday
+    status: broken
+  - name: Domino's
+    careers_url: https://careers.smartrecruiters.com/Dominos
+    provider: smartrecruiters
+    max_pages: 1000
+    status: ok
+  - name: Kraft Heinz
+    careers_url: https://heinz.wd1.myworkdayjobs.com/KraftHeinz_Careers
+    provider: workday
+    status: ok
+  - name: Mondelez International
+    careers_url: https://mdlz.wd3.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: PepsiCo
+    careers_url: https://www.pepsicojobs.com
+    api: https://www.pepsicojobs.com/api/jobs
+    provider: jibeapply
+    max_pages: 1000
+    status: ok
+  - name: The Coca-Cola Company
+    careers_url: https://coke.wd1.myworkdayjobs.com/coca-cola-careers
+    provider: workday
+    status: ok
+  - name: The Walt Disney Company
+    careers_url: https://join.disneycareers.com
+    provider: phenom
+    phenom:
+      lang: en_global
+      country: global
+      urlPrefix: global/en
+    status: ok
+  - name: Nike
+    careers_url: https://nike.wd1.myworkdayjobs.com/nke
+    provider: workday
+    status: ok
+  - name: Procter & Gamble
+    careers_url: https://pg.wd5.myworkdayjobs.com/1000
+    provider: workday
+    status: ok
+  - name: Unilever
+    careers_url: https://unilever.wd3.myworkdayjobs.com/Unilever_Experienced_Professionals
+    provider: workday
+    status: ok
+  - name: General Mills
+    careers_url: https://genmills.wd1.myworkdayjobs.com/GMI_External_Careers
+    provider: workday
+    status: ok
+  - name: Kellanova
+    careers_url: https://jobs.kellanova.com
+    provider: successfactors
+    status: ok
+  - name: Adidas
+    careers_url: https://jobs.adidas-group.com
+    provider: successfactors
+    max_jobs: 5000
+    status: ok
+  - name: Costco
+    careers_url: https://careers.costco.com
+    api: https://careers.costco.com/api/jobs
+    provider: jibeapply
+    max_pages: 5000
+    status: ok
+  - name: Kroger
+    careers_url: https://eluq.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2001/jobs
+    provider: oraclecloud
+    max_pages: 150
+    status: ok
+  - name: Nordstrom
+    careers_url: https://nordstrom.wd501.myworkdayjobs.com/nordstrom_careers
+    provider: workday
+    status: ok
+  - name: The Home Depot
+    careers_url: https://homedepot.wd5.myworkdayjobs.com/CareerDepot
+    provider: workday
+    status: ok
+  - name: Health Care Service Corporation (HCSC)
+    careers_url: https://careers.hcsc.com/search-jobs
+    provider: radancy
+    status: ok
+  - name: Millennium
+    careers_url: https://mlp.eightfold.ai/careers?domain=mlp.com&microsite=campus-site
+    provider: eightfold
+    status: ok
+  - name: Honda
+    careers_url: https://careers.honda.com/us/en/search-results
+    provider: phenom
+    phenom:
+      urlPrefix: us/en
+    status: ok
+  - name: Ford Motor Company
+    careers_url: https://efds.fa.em5.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    facet: false
+    status: ok
+  - name: Hyundai Motor America
+    careers_url: https://careers-americas.hyundai.com/hma
+    provider: successfactors
+    status: ok
+  - name: Kia America
+    careers_url: https://careers-americas.kia.com
+    provider: successfactors
+    status: ok
+  - name: Volvo Cars
+    careers_url: https://jobs.volvocars.com
+    provider: successfactors
+    status: ok
+  - name: Volkswagen Group of America
+    careers_url: https://jobs.volkswagen-group.com/Volkswagen
+    provider: successfactors
+    status: ok
+  - name: Mercedes-Benz
+    careers_url: https://jobs.mercedes-benz.com/en
+    provider: mercedes
+    country: US
+    status: ok
+  - name: Porsche
+    careers_url: https://jobs.porsche.com/index.php?ac=search_result&search_criterion_country[]=231
+    provider: porsche
+    status: ok
+  - name: BMW Group
+    careers_url: https://www.bmwgroup.jobs/us/en/jobs.html
+    provider: bmwgroup
+    status: ok
+  - name: Stellantis
+    careers_url: https://careers.stellantis.com/job-search-results/?primary_country=US
+    provider: stellantis
+    status: ok
+  - name: Gap
+    careers_url: https://gapinc.wd1.myworkdayjobs.com/GAPINC
+    provider: workday
+    status: ok
+  - name: Albertsons
+    careers_url: https://eofd.fa.us6.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/jobs
+    provider: oraclecloud
+    max_pages: 100
+    status: ok
+  - name: Sephora
+    careers_url: https://jobs.sephora.com
+    provider: successfactors
+    max_jobs: 5000
+    status: ok
+  - name: L'Oreal
+    careers_url: https://careers.loreal.com/en/search-jobs
+    provider: radancy
+    max_jobs: 6000
+    status: ok
+  - name: Mattel
+    careers_url: https://careers.smartrecruiters.com/MattelInc/
+    provider: smartrecruiters
+    status: ok
+  - name: American Airlines
+    careers_url: https://jobs.aa.com
+    provider: successfactors
+    status: ok
+  - name: Lenovo
+    careers_url: https://jobs.lenovo.com/en_US/careers/SearchJobs
+    provider: avature
+    max_pages: 120
+    status: ok
+  - name: UnitedHealth Group
+    careers_url: https://careers.unitedhealthgroup.com/search-jobs
+    provider: radancy
+    status: ok
+  - name: Fannie Mae
+    careers_url: https://fanniemae.wd1.myworkdayjobs.com/FannieMaeCareers
+    provider: workday
+    status: ok
+  - name: StoneX
+    careers_url: https://careers-stonex.icims.com
+    provider: icims
+    status: ok
+  - name: Nationwide
+    careers_url: https://nationwide.wd1.myworkdayjobs.com/Nationwide_Career
+    provider: workday
+    status: ok
+  - name: Tyson Foods
+    careers_url: https://tysonfoods.wd5.myworkdayjobs.com/TSN
+    provider: workday
+    status: ok
+  - name: CHS
+    careers_url: https://careers.chsinc.com
+    provider: successfactors
+    status: ok
+  - name: USAA
+    careers_url: https://usaa.wd1.myworkdayjobs.com/USAAJOBSWD
+    provider: workday
+    status: ok
+  - name: Mastercard
+    careers_url: https://mastercard.wd1.myworkdayjobs.com/CorporateCareers
+    provider: workday
+    status: ok
+  - name: Duke Energy
+    careers_url: https://dukeenergy.wd1.myworkdayjobs.com/search
+    provider: workday
+    status: ok
+  - name: Arrow Electronics
+    careers_url: https://arrow.wd1.myworkdayjobs.com/AC
+    provider: workday
+    status: ok
+  - name: Nestle USA
+    careers_url: https://jobdetails.nestle.com
+    provider: successfactors
+    status: ok
+  - name: Molson Coors
+    careers_url: https://jobs.molsoncoors.com
+    provider: successfactors
+    status: ok
+  - name: PVH
+    careers_url: https://pvh.wd1.myworkdayjobs.com/PVH_Careers
+    provider: workday
+    status: ok
+  - name: Southwest Airlines
+    careers_url: https://careers.southwestair.com
+    provider: phenom
+    phenom:
+      lang: en_us
+      country: us
+      urlPrefix: us/en
+    status: ok
+  - name: Wyndham
+    careers_url: https://careers.wyndhamhotels.com
+    provider: successfactors
+    status: ok
+  - name: Paramount
+    careers_url: https://careers.paramount.com
+    provider: successfactors
+    status: ok
+  - name: Hasbro
+    careers_url: https://job-boards.greenhouse.io/hasbro
+    provider: greenhouse
+    status: ok
+  - name: Novartis
+    careers_url: https://novartis.wd3.myworkdayjobs.com/Novartis_Careers
+    provider: workday
+    status: ok
+  - name: Boehringer Ingelheim
+    careers_url: https://jobs.boehringer-ingelheim.com
+    provider: successfactors
+    status: ok
+  - name: Quest Diagnostics
+    careers_url: https://hdox.fa.us6.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Munich Re
+    careers_url: https://careers.munichre.com/en/search-jobs
+    provider: radancy
+    keywords: false
+    status: ok
+  - name: State Street
+    careers_url: https://statestreet.wd1.myworkdayjobs.com/Global
+    provider: workday
+    status: ok
+  - name: Capital Group
+    careers_url: https://capgroup.wd1.myworkdayjobs.com/capitalgroupcareers
+    provider: workday
+    status: ok
+  - name: HSBC
+    careers_url: https://hsbc.eightfold.ai/careers?domain=hsbc.com
+    provider: eightfold
+    status: ok
+  - name: Houlihan Lokey
+    careers_url: https://hl.wd1.myworkdayjobs.com/Campus
+    provider: workday
+    status: ok
+  - name: Nasdaq
+    careers_url: https://nasdaq.wd1.myworkdayjobs.com/Global_External_Site
+    provider: workday
+    status: ok
+  - name: Fiserv
+    careers_url: https://fiserv.wd5.myworkdayjobs.com/EXT
+    provider: workday
+    status: ok
+  - name: Zoom
+    careers_url: https://zoom.wd5.myworkdayjobs.com/Zoom
+    provider: workday
+    status: ok
+  - name: NetApp
+    careers_url: https://netapp.eightfold.ai/careers
+    provider: eightfold
+    status: ok
+  - name: Otis
+    careers_url: https://otis.wd504.myworkdayjobs.com/REC_Ext_Gateway
+    provider: workday
+    status: ok
+  - name: Baker Hughes
+    careers_url: https://bakerhughes.wd5.myworkdayjobs.com/BakerHughes
+    provider: workday
+    status: ok
+  - name: BNSF
+    careers_url: https://jobs.bnsf.com
+    provider: phenom
+    phenom:
+      lang: en_us
+      country: us
+      urlPrefix: us/en
+    status: ok
+  - name: Maersk
+    careers_url: https://maersk.wd3.myworkdayjobs.com/Maersk_Careers
+    provider: workday
+    status: ok
+  - name: Allianz
+    careers_url: https://careers.allianz.com
+    provider: phenom
+    phenom:
+      lang: en_global
+      country: global
+      urlPrefix: global/en
+    status: ok
+  - name: Kemper
+    careers_url: https://kemper.wd5.myworkdayjobs.com/Kemper_Careers
+    provider: workday
+    status: ok
+  - name: Cencora
+    careers_url: https://myhrabc.wd5.myworkdayjobs.com/Global
+    provider: workday
+    status: ok
+  - name: ConocoPhillips
+    careers_url: https://conocophillips.wd1.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: Charter Communications
+    careers_url: https://jobs.spectrum.com/search-jobs
+    provider: radancy
+    status: ok
+  - name: Dow
+    careers_url: https://dow.wd1.myworkdayjobs.com/ExternalCareers
+    provider: workday
+    status: ok
+  - name: Broadcom
+    careers_url: https://broadcom.wd1.myworkdayjobs.com/External_Career
+    provider: workday
+    status: ok
+  - name: NextEra Energy
+    careers_url: https://jobs.nexteraenergy.com
+    provider: successfactors
+    status: ok
+  - name: Colgate-Palmolive
+    careers_url: https://jobs.colgate.com
+    provider: successfactors
+    status: ok
+  - name: Clorox
+    careers_url: https://clorox.wd1.myworkdayjobs.com/Clorox
+    provider: workday
+    status: ok
+  - name: Diageo
+    careers_url: https://diageo.wd3.myworkdayjobs.com/Diageo_Careers
+    provider: workday
+    status: ok
+  - name: Dollar General
+    careers_url: https://ibxwjb.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    max_pages: 500
+    status: ok
+  - name: VF Corporation
+    careers_url: https://vfc.wd5.myworkdayjobs.com/vfc_careers
+    provider: workday
+    status: ok
+  - name: Chewy
+    careers_url: https://chewy.wd5.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: Aldi
+    careers_url: https://careers.aldi.us/search-jobs
+    provider: radancy
+    status: ok
+  - name: JetBlue
+    careers_url: https://careers.jetblue.com
+    provider: successfactors
+    status: ok
+  - name: Carnival
+    careers_url: https://eicl.fa.em5.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CORP/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Fox Corporation
+    careers_url: https://fox.wd1.myworkdayjobs.com/Domestic
+    provider: workday
+    status: ok
+  - name: NBA
+    careers_url: https://nba.wd108.myworkdayjobs.com/nbacareers
+    provider: workday
+    status: ok
+  - name: Sanofi
+    careers_url: https://sanofi.wd3.myworkdayjobs.com/SanofiCareers
+    provider: workday
+    status: ok
+  - name: Becton Dickinson
+    careers_url: https://bdx.wd1.myworkdayjobs.com/EXTERNAL_CAREER_SITE_USA
+    provider: workday
+    status: ok
+  - name: Kaiser Permanente
+    careers_url: https://www.kaiserpermanentejobs.org/search-jobs
+    provider: radancy
+    status: ok
+  - name: Zurich North America
+    careers_url: https://www.careers.zurich.com
+    provider: successfactors
+    status: ok
+  - name: Northern Trust
+    careers_url: https://ntrs.wd1.myworkdayjobs.com/northerntrust
+    provider: workday
+    status: ok
+  - name: KKR
+    careers_url: https://job-boards.greenhouse.io/stage
+    provider: greenhouse
+    status: ok
+  - name: Raymond James
+    careers_url: https://raymondjames.wd1.myworkdayjobs.com/RaymondJamesEarlyCareers
+    provider: workday
+    status: ok
+  - name: Moody's
+    careers_url: https://careers.moodys.com/en/search-jobs
+    provider: radancy
+    status: ok
+  - name: FIS
+    careers_url: https://fis.wd5.myworkdayjobs.com/SearchJobs
+    provider: workday
+    status: ok
+  - name: Deloitte
+    careers_url: https://apply.deloitte.com/en_US/careers/SearchJobs
+    provider: avature
+    max_pages: 200
+    status: ok
+  - name: Guidehouse
+    careers_url: https://guidehouse.wd1.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: Ipsos
+    careers_url: https://ecqf.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/IpsosCareers/jobs
+    provider: oraclecloud
+    status: ok
+  - name: HubSpot
+    careers_url: https://job-boards.greenhouse.io/hubspotjobs
+    provider: greenhouse
+    status: ok
+  - name: Hewlett Packard Enterprise (incl. Juniper)
+    careers_url: https://hpe.wd5.myworkdayjobs.com/Jobsathpe
+    provider: workday
+    status: ok
+  - name: Grubhub (Wonder)
+    careers_url: https://wonder.wd1.myworkdayjobs.com/Grubhub_Careers
+    provider: workday
+    status: ok
+  - name: Trane
+    careers_url: https://tranetechnologies.wd12.myworkdayjobs.com/Trane_Technologies_Careers
+    provider: workday
+    status: ok
+  - name: Cargill
+    careers_url: https://careers.cargill.com/en/search-jobs
+    provider: radancy
+    status: ok
+  - name: Occidental Petroleum
+    careers_url: https://oxy.wd5.myworkdayjobs.com/UniversityRelations
+    provider: workday
+    status: ok
+  - name: Norfolk Southern
+    careers_url: https://jobs.nscorp.com
+    provider: successfactors
+    status: ok
+  - name: Jones Lang LaSalle (JLL)
+    careers_url: https://jll.wd1.myworkdayjobs.com/jllcareers
+    provider: workday
+    max_pages: 500
+    status: ok
+  - name: Voya
+    careers_url: https://godirect.wd5.myworkdayjobs.com/voya_jobs
+    provider: workday
+    status: ok
+  - name: GEICO
+    careers_url: https://geico.wd1.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: Bank of America
+    careers_url: https://ghr.wd1.myworkdayjobs.com/lateral-us
+    provider: workday
+    max_pages: 500
+    status: ok
+  - name: Verizon
+    careers_url: https://verizon.wd12.myworkdayjobs.com/verizon-careers
+    provider: workday
+    status: ok
+  - name: Sysco
+    careers_url: https://sysco.wd5.myworkdayjobs.com/syscocareers
+    provider: workday
+    max_pages: 500
+    status: ok
+  - name: Pfizer
+    careers_url: https://pfizer.wd1.myworkdayjobs.com/PfizerCareers
+    provider: workday
+    status: ok
+  - name: New York Life
+    careers_url: https://jobs.newyorklife.com
+    provider: successfactors
+    status: ok
+  - name: Plains All American
+    careers_url: https://plains.wd1.myworkdayjobs.com/plains
+    provider: workday
+    status: ok
+  - name: Eli Lilly
+    careers_url: https://lilly.wd115.myworkdayjobs.com/LLY
+    provider: workday
+    status: ok
+  - name: Kimberly-Clark
+    careers_url: https://kimberlyclark.wd1.myworkdayjobs.com/GLOBAL
+    provider: workday
+    status: ok
+  - name: Conagra
+    careers_url: https://conagrabrands.wd1.myworkdayjobs.com/Careers_US
+    provider: workday
+    status: ok
+  - name: Monster Beverage
+    careers_url: https://job-boards.greenhouse.io/monsterenergy
+    provider: greenhouse
+    status: ok
+  - name: Dollar Tree
+    careers_url: https://dollartree.wd5.myworkdayjobs.com/dollartreeus
+    provider: workday
+    max_pages: 500
+    status: ok
+  - name: Under Armour
+    careers_url: https://careers.underarmour.com/go/Internships/9635400/
+    provider: successfactors
+    status: ok
+  - name: Williams-Sonoma
+    careers_url: https://ehac.fa.us6.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Subaru
+    careers_url: https://hcal.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Marriott
+    careers_url: https://ejwl.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/jobs
+    provider: oraclecloud
+    keywords:
+      - internship
+      - student
+      - co-op
+      - summer analyst
+      - summer associate
+      - graduate program
+      - early career
+    max_pages: 500
+    status: ok
+  - name: Las Vegas Sands
+    careers_url: https://sands.wd1.myworkdayjobs.com/Sands_Careers
+    provider: workday
+    status: ok
+  - name: Microsoft Gaming / Activision Blizzard
+    careers_url: https://xboxgaming.wd1.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: NFL
+    careers_url: https://job-boards.greenhouse.io/nflcareers
+    provider: greenhouse
+    status: ok
+  - name: GSK
+    careers_url: https://gsk.wd5.myworkdayjobs.com/GSKCareers
+    provider: workday
+    status: ok
+  - name: Baxter
+    careers_url: https://baxter.wd1.myworkdayjobs.com/baxter
+    provider: workday
+    status: ok
+  - name: Principal Financial
+    careers_url: https://careers.principal.com
+    api: https://careers.principal.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: Fifth Third
+    careers_url: https://fifththird.wd5.myworkdayjobs.com/53careers
+    provider: workday
+    status: ok
+  - name: Fidelity Investments
+    careers_url: https://fmr.wd1.myworkdayjobs.com/targeted
+    provider: workday
+    status: ok
+  - name: Apollo Global
+    careers_url: https://athene.wd5.myworkdayjobs.com/Apollo_Careers
+    provider: workday
+    status: ok
+  - name: Nomura
+    careers_url: https://careers.nomura.com
+    provider: successfactors
+    status: ok
+  - name: MSCI
+    careers_url: https://uscareers-msci.icims.com
+    provider: icims
+    status: ok
+  - name: Global Payments
+    careers_url: https://tsys.wd1.myworkdayjobs.com/TSYS
+    provider: workday
+    status: ok
+  - name: PwC
+    careers_url: https://pwc.wd3.myworkdayjobs.com/US_Entry_Level_Careers
+    provider: workday
+    status: ok
+  - name: Kantar
+    careers_url: https://kantar.wd3.myworkdayjobs.com/KANTAR
+    provider: workday
+    status: ok
+  - name: Okta
+    careers_url: https://job-boards.greenhouse.io/okta
+    provider: greenhouse
+    status: ok
+  - name: Yelp
+    careers_url: https://uscareers-yelp.icims.com
+    provider: icims
+    status: ok
+  - name: Bunge
+    careers_url: https://jobs.bunge.com
+    provider: successfactors
+    status: ok
+  - name: PG&E
+    careers_url: https://jobs.pge.com/search-jobs
+    provider: radancy
+    status: ok
+  - name: XPO
+    careers_url: https://jobs.xpo.com
+    provider: successfactors
+    status: ok
+  - name: Waste Management
+    careers_url: https://emcm.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/WMCareers/jobs
+    provider: oraclecloud
+    status: ok
+  - name: CommonSpirit
+    careers_url: https://www.commonspirit.careers/search-jobs
+    provider: radancy
+    status: ok
+  - name: Elevance Health
+    careers_url: https://elevancehealth.wd1.myworkdayjobs.com/ANT
+    provider: workday
+    status: ok
+  - name: AT&T
+    careers_url: https://att.wd1.myworkdayjobs.com/ATTcollege
+    provider: workday
+    status: ok
+  - name: TD Synnex
+    careers_url: https://synnex.wd5.myworkdayjobs.com/tdsynnexcareers
+    provider: workday
+    status: ok
+  - name: Prudential Financial
+    careers_url: https://pru.wd5.myworkdayjobs.com/Careers
+    provider: workday
+    status: ok
+  - name: World Kinect
+    careers_url: https://wfscorp.wd5.myworkdayjobs.com/wfscareers
+    provider: workday
+    status: ok
+  - name: Thermo Fisher Scientific
+    careers_url: https://thermofisher.wd5.myworkdayjobs.com/ThermoFisherCareers
+    provider: workday
+    max_pages: 500
+    status: ok
+  - name: Massachusetts Mutual (MassMutual)
+    careers_url: https://massmutual.wd1.myworkdayjobs.com/MMCareers
+    provider: workday
+    status: ok
+  - name: US Bancorp
+    careers_url: https://usbank.wd1.myworkdayjobs.com/US_Bank_Careers
+    provider: workday
+    facet: false
+    status: ok
+  - name: Hormel
+    careers_url: https://ekkh.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2002/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Ulta Beauty
+    careers_url: https://careers.ulta.com
+    api: https://careers.ulta.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: Skechers
+    careers_url: https://skechers.wd5.myworkdayjobs.com/One-career-site
+    provider: workday
+    status: ok
+  - name: Tractor Supply
+    careers_url: https://www.tractorsupply.careers
+    provider: successfactors
+    max_pages: 500
+    status: ok
+  - name: H-E-B
+    careers_url: https://careers.heb.com
+    api: https://careers.heb.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: Mazda
+    careers_url: https://mazdausa.wd5.myworkdayjobs.com/Mazda
+    provider: workday
+    status: ok
+  - name: Hilton
+    careers_url: https://efet.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    facet: false
+    status: ok
+  - name: MGM Resorts
+    careers_url: https://mgmresorts.wd5.myworkdayjobs.com/MGMCareers
+    provider: workday
+    status: ok
+  - name: Take-Two Interactive
+    careers_url: https://job-boards.greenhouse.io/taketwo
+    provider: greenhouse
+    status: ok
+  - name: Peloton
+    careers_url: https://job-boards.greenhouse.io/peloton
+    provider: greenhouse
+    status: ok
+  - name: Novo Nordisk
+    careers_url: https://careers.novonordisk.com
+    provider: successfactors
+    status: ok
+  - name: Edwards Lifesciences
+    careers_url: https://edwards.wd5.myworkdayjobs.com/EdwardsCareers
+    provider: workday
+    status: ok
+  - name: Lincoln Financial
+    careers_url: https://jobs.lincolnfinancial.com
+    provider: successfactors
+    status: ok
+  - name: Regions Financial
+    careers_url: https://regions.wd5.myworkdayjobs.com/Regions_Careers
+    provider: workday
+    facet: false
+    status: ok
+  - name: T. Rowe Price
+    careers_url: https://troweprice.wd5.myworkdayjobs.com/TRowePrice
+    provider: workday
+    status: ok
+  - name: Carlyle
+    careers_url: https://carlyle.wd1.myworkdayjobs.com/Carlyle
+    provider: workday
+    status: ok
+  - name: BMO
+    careers_url: https://bmo.wd3.myworkdayjobs.com/External
+    provider: workday
+    facet: false
+    status: ok
+  - name: Ameriprise
+    careers_url: https://ameriprise.wd5.myworkdayjobs.com/Ameriprise
+    provider: workday
+    status: ok
+  - name: Experian
+    careers_url: https://careers.smartrecruiters.com/Experian/
+    provider: smartrecruiters
+    status: ok
+  - name: Capgemini
+    careers_url: https://careers.capgemini.com
+    provider: successfactors
+    max_jobs: 5000
+    max_pages: 500
+    status: ok
+  - name: LG
+    careers_url: https://job-boards.greenhouse.io/lgelectronics
+    provider: greenhouse
+    status: ok
+  - name: Shell
+    careers_url: https://shell.wd3.myworkdayjobs.com/ShellCareers
+    provider: workday
+    status: ok
+  - name: Con Edison
+    careers_url: https://ejcu.fa.us6.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1033/jobs
+    provider: oraclecloud
+    status: ok
+  - name: J.B. Hunt
+    careers_url: https://jbhunt.wd501.myworkdayjobs.com/Careers
+    provider: workday
+    status: ok
+  - name: Republic Services
+    careers_url: https://republic.wd5.myworkdayjobs.com/Republic
+    provider: workday
+    status: ok
+  - name: Opendoor
+    careers_url: https://ats.rippling.com/opendoor/jobs
+    provider: rippling
+    status: ok
+  - name: Northwestern Medicine
+    careers_url: https://careers.smartrecruiters.com/NorthwesternMedicine/
+    provider: smartrecruiters
+    status: ok
+  - name: Marathon Petroleum
+    careers_url: https://mpc.wd1.myworkdayjobs.com/MPCCareers
+    provider: workday
+    status: ok
+  - name: Target
+    careers_url: https://target.wd5.myworkdayjobs.com/targetcareers
+    provider: workday
+    max_pages: 500
+    status: ok
+  - name: United Airlines
+    careers_url: https://careers.united.com
+    provider: phenom
+    phenom:
+      lang: en_us
+      country: us
+      urlPrefix: us/en
+    status: ok
+  - name: AIG
+    careers_url: https://aig.wd1.myworkdayjobs.com/aig
+    provider: workday
+    status: ok
+  - name: Northwestern Mutual
+    careers_url: https://northwesternmutual.wd5.myworkdayjobs.com/CORPORATE-CAREERS
+    provider: workday
+    status: ok
+  - name: Philip Morris International
+    careers_url: https://join.pmicareers.com
+    provider: phenom
+    phenom:
+      lang: en_gb
+      country: gb
+      urlPrefix: gb/en
+    status: ok
+  - name: Booking Holdings
+    careers_url: https://priceline.wd1.myworkdayjobs.com/BookingHoldings
+    provider: workday
+    status: ok
+  - name: PNC
+    careers_url: https://pnc.wd5.myworkdayjobs.com/External
+    provider: workday
+    facet: false
+    max_pages: 500
+    status: ok
+  - name: Hershey
+    careers_url: https://careers.thehersheycompany.com
+    provider: successfactors
+    status: ok
+  - name: Keurig Dr Pepper
+    careers_url: https://careers.keurigdrpepper.com/en/search-jobs
+    provider: radancy
+    status: ok
+  - name: O'Reilly Automotive
+    careers_url: https://oreillyauto.wd1.myworkdayjobs.com/oreilly
+    provider: workday
+    max_pages: 500
+    status: ok
+  - name: Meijer
+    careers_url: https://meijer.wd5.myworkdayjobs.com/Meijer_Stores_Hourly
+    provider: workday
+    status: ok
+  - name: Lucid Motors
+    careers_url: https://job-boards.greenhouse.io/lucidmotors
+    provider: greenhouse
+    status: ok
+  - name: Caesars Entertainment
+    careers_url: https://edmn.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Nintendo
+    careers_url: https://job-boards.greenhouse.io/nintendo
+    provider: greenhouse
+    status: ok
+  - name: Gilead Sciences
+    careers_url: https://gilead.wd1.myworkdayjobs.com/gileadcareers
+    provider: workday
+    status: ok
+  - name: Bayer
+    careers_url: https://jobs.bayer.com
+    provider: successfactors
+    status: ok
+  - name: Illumina
+    careers_url: https://illumina.wd1.myworkdayjobs.com/illumina-careers
+    provider: workday
+    status: ok
+  - name: Farmers Insurance
+    careers_url: https://jobs.farmersinsurance.com
+    provider: successfactors
+    status: ok
+  - name: Ally Financial
+    careers_url: https://ally.wd1.myworkdayjobs.com/Ally
+    provider: workday
+    status: ok
+  - name: Franklin Templeton
+    careers_url: https://careers.franklintempleton.com
+    provider: phenom
+    phenom:
+      lang: en_us
+      country: us
+      urlPrefix: us/en
+    status: ok
+  - name: Jefferies
+    careers_url: https://hdid.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: FactSet
+    careers_url: https://factset.wd108.myworkdayjobs.com/FactSetCareers
+    provider: workday
+    status: ok
+  - name: TransUnion
+    careers_url: https://transunion.wd5.myworkdayjobs.com/TransUnion
+    provider: workday
+    status: ok
+  - name: Bosch
+    careers_url: https://careers.smartrecruiters.com/BoschGroup/
+    provider: smartrecruiters
+    max_pages: 500
+    status: ok
+  - name: DuPont
+    careers_url: https://dupont.wd5.myworkdayjobs.com/Jobs
+    provider: workday
+    status: ok
+  - name: Ryder
+    careers_url: https://ryder.wd5.myworkdayjobs.com/RyderCareers
+    provider: workday
+    status: ok
+  - name: Hertz
+    careers_url: https://fa-evlf-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Brighthouse
+    careers_url: https://jobs.brighthousefinancial.com
+    provider: successfactors
+    status: ok
+  - name: Phillips 66
+    careers_url: https://careers.phillips66.com
+    provider: successfactors
+    status: ok
+  - name: Morgan Stanley
+    careers_url: https://ms.wd5.myworkdayjobs.com/External
+    provider: workday
+    facet: false
+    status: ok
+  - name: IBM
+    careers_url: https://www.ibm.com/careers/search
+    provider: ibm
+    ibm:
+      country: United States
+    status: ok
+  - name: Cisco
+    careers_url: https://cisco.wd5.myworkdayjobs.com/Cisco_Careers
+    provider: workday
+    status: ok
+  - name: TIAA
+    careers_url: https://tiaa.wd1.myworkdayjobs.com/Search
+    provider: workday
+    status: ok
+  - name: Charles Schwab
+    careers_url: https://career-schwab.icims.com
+    provider: icims
+    status: ok
+  - name: Altria
+    careers_url: https://careers.altria.com
+    provider: successfactors
+    status: ok
+  - name: Exelon
+    careers_url: https://jobs.exeloncorp.com
+    api: https://jobs.exeloncorp.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: Truist
+    careers_url: https://truist.wd1.myworkdayjobs.com/Careers
+    provider: workday
+    status: ok
+  - name: Mars
+    careers_url: https://mars.wd3.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: Anheuser-Busch
+    careers_url: https://abinbev.wd1.myworkdayjobs.com/USA
+    provider: workday
+    status: ok
+  - name: Kohl's
+    careers_url: https://kohls.wd504.myworkdayjobs.com/kohlscareers
+    provider: workday
+    max_pages: 500
+    status: ok
+  - name: eBay
+    careers_url: https://ebay.wd5.myworkdayjobs.com/apply
+    provider: workday
+    status: ok
+  - name: CarMax
+    careers_url: https://carmax.wd1.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: Wegmans
+    careers_url: https://wegmans.wd1.myworkdayjobs.com/Wegmans
+    provider: workday
+    status: ok
+  - name: Harley-Davidson
+    careers_url: https://jobs.harley-davidson.com
+    provider: successfactors
+    status: ok
+  - name: Warner Bros. Discovery
+    careers_url: https://warnerbros.wd5.myworkdayjobs.com/global
+    provider: workday
+    status: ok
+  - name: iHeartMedia
+    careers_url: https://iheartmedia.wd5.myworkdayjobs.com/External_iHM
+    provider: workday
+    status: ok
+  - name: Biogen
+    careers_url: https://biibhr.wd3.myworkdayjobs.com/external
+    provider: workday
+    status: ok
+  - name: Takeda
+    careers_url: https://jobs.takeda.com/search-jobs
+    provider: radancy
+    status: ok
+  - name: IQVIA
+    careers_url: https://iqvia.wd1.myworkdayjobs.com/IQVIA
+    provider: workday
+    status: ok
+  - name: Swiss Re
+    careers_url: https://careers.swissre.com
+    provider: successfactors
+    status: ok
+  - name: Wellington Management
+    careers_url: https://wellington.wd5.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: Moelis
+    careers_url: https://moelis.wd1.myworkdayjobs.com/Experienced-Hires
+    provider: workday
+    status: ok
+  - name: CME Group
+    careers_url: https://cmegroup.wd1.myworkdayjobs.com/cme_careers
+    provider: workday
+    status: ok
+  - name: Morningstar
+    careers_url: https://morningstar.wd5.myworkdayjobs.com/Morningstar
+    provider: workday
+    status: ok
+  - name: Marsh McLennan (incl. Oliver Wyman)
+    careers_url: https://mmc.wd1.myworkdayjobs.com/MMC
+    provider: workday
+    status: ok
+  - name: Nielsen
+    careers_url: https://careers.smartrecruiters.com/TheNielsenCompany/
+    provider: smartrecruiters
+    status: ok
+  - name: Seagate
+    careers_url: https://seagatecareers.com
+    provider: successfactors
+    status: ok
+  - name: Johnson Controls
+    careers_url: https://jci.wd5.myworkdayjobs.com/JCI
+    provider: workday
+    max_pages: 500
+    status: ok
+  - name: LyondellBasell
+    careers_url: https://careers.lyondellbasell.com
+    provider: successfactors
+    status: ok
+  - name: Halliburton
+    careers_url: https://jobs.halliburton.com
+    provider: successfactors
+    status: ok
+  - name: Union Pacific
+    careers_url: https://up.jobs
+    provider: successfactors
+    status: ok
+  - name: DHL
+    careers_url: https://careers.dhl.com
+    provider: phenom
+    max_pages: 500
+    phenom:
+      lang: en_us
+      country: us
+      urlPrefix: amer/en
+    status: ok
+  - name: Avis Budget
+    careers_url: https://avisbudget.wd1.myworkdayjobs.com/ABG_Careers
+    provider: workday
+    status: ok
+  - name: Compass
+    careers_url: https://job-boards.greenhouse.io/urbancompass
+    provider: greenhouse
+    status: ok
+  - name: Unum
+    careers_url: https://unum.wd1.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: Tempus
+    careers_url: https://tempus.wd5.myworkdayjobs.com/Tempus_Careers
+    provider: workday
+    status: ok
+  - name: Interactive Brokers
+    careers_url: https://jobs.dayforcehcm.com/en-US/ibgllc/CANDIDATEPORTAL?country=US
+    provider: dayforce
+    status: ok
+  - name: Kearney
+    careers_url: https://kearney.recsolu.com/job_boards/1?filters=12240
+    provider: recsolu
+    status: ok
+  - name: Edward Jones
+    careers_url: https://sjobs.brassring.com/TGnewUI/Search/Home/Home?partnerid=26235&siteid=5374
+    provider: brassring
+    status: ok
+  - name: Publix
+    careers_url: https://sjobs.brassring.com/TGnewUI/Search/Home/Home?partnerid=26173&siteid=5197
+    provider: brassring
+    status: ok
+  - name: Performance Food Group
+    careers_url: https://sjobs.brassring.com/TGnewUI/Search/Home/Home?partnerid=26350&siteid=6930
+    provider: brassring
+    status: ok
+  - name: UBS
+    careers_url: https://jobs.ubs.com/TGnewUI/Search/Home/Home?partnerid=25008&siteid=5012
+    provider: brassring
+    status: ok
+  - name: UBS Students & Graduates
+    careers_url: https://jobs.ubs.com/TGnewUI/Search/Home/Home?partnerid=25008&siteid=5131
+    provider: brassring
+    status: ok
+  - name: Archer Daniels Midland
+    careers_url: https://sjobs.brassring.com/TGnewUI/Search/Home/Home?partnerid=25416&siteid=5998
+    provider: brassring
+    status: ok
+  - name: Valero Energy
+    careers_url: https://valero.taleo.net/careersection/2/jobsearch.ftl?lang=en
+    provider: taleo
+    status: ok
+  - name: Valero Energy University
+    careers_url: https://valero.taleo.net/careersection/3/jobsearch.ftl?lang=en
+    provider: taleo
+    status: ok
+  - name: Enterprise Products
+    careers_url: https://epco.taleo.net/careersection/fieldops/jobsearch.ftl?lang=en
+    provider: taleo
+    status: ok
+  - name: Victoria's Secret
+    careers_url: https://vsco.taleo.net/careersection/vss_in/jobsearch.ftl?lang=en
+    provider: taleo
+    status: ok
+  - name: Bath & Body Works
+    careers_url: https://lbrands.taleo.net/careersection/bbw_in/jobsearch.ftl?lang=en
+    provider: taleo
+    status: ok
+  - name: D.R. Horton
+    careers_url: https://drhorton.taleo.net/careersection/2/jobsearch.ftl?lang=en
+    provider: taleo
+    status: ok
+  - name: Equitable
+    careers_url: https://equitable.taleo.net/careersection/eqh_1/jobsearch.ftl?lang=en
+    provider: taleo
+    status: ok
+  - name: Hyatt
+    careers_url: https://tas-hyatt.taleo.net/careersection/10780/jobsearch.ftl?lang=en
+    provider: taleo
+    status: ok
+  - name: Cognizant
+    careers_url: https://cognizant.taleo.net/careersection/Lateral/jobsearch.ftl?lang=en
+    provider: taleo
+    status: ok
+  - name: FedEx
+    careers_url: https://careers.fedex.com/jobs?filter%5Bcountry%5D%5B0%5D=United%20States
+    provider: paradox
+    status: ok
+  - name: Lennar
+    careers_url: https://careers.lennar.com/search
+    provider: msts
+    status: ok
+  - name: Darden
+    careers_url: https://dardenrscjobs.recruiting.com/jobs
+    provider: paradox
+    status: ok
+  - name: Best Buy
+    careers_url: https://jobs.bestbuy.com/bby?id=all_jobs&country=US
+    provider: bestbuy
+    status: ok
+  - name: BNP Paribas
+    careers_url: https://group.bnpparibas/en/careers/all-job-offers/united-states
+    provider: bnpparibas
+    status: ok
+  - name: D. E. Shaw
+    careers_url: https://www.deshaw.com/careers
+    provider: deshaw
+    status: ok
+  - name: SLB
+    careers_url: https://careers.slb.com/job-listing#f-country-job=United%20States
+    provider: slb
+    status: ok
+  - name: IHG
+    careers_url: https://fa-evax-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    locationId: '300000000451267'
+    status: ok
+  - name: Circana
+    careers_url: https://circana.eightfold.ai/careers?domain=circana.com
+    provider: eightfold
+    status: ok
+  - name: Corteva
+    careers_url: https://corteva.eightfold.ai/careers?domain=corteva.com
+    provider: eightfold
+    status: ok
+  - name: Estee Lauder
+    careers_url: https://elcompanies.eightfold.ai/careers?domain=elcompanies.com
+    provider: eightfold
+    query: intern
+    eightfold_mode: pcsx
+    status: ok
+  - name: Whirlpool
+    careers_url: https://whirlpool.eightfold.ai/careers?domain=whirlpool.com
+    provider: eightfold
+    status: ok
+  - name: Lam Research
+    careers_url: https://lamresearch.eightfold.ai/careers?domain=lamresearch.com
+    provider: eightfold
+    status: ok
+  - name: Lumen
+    careers_url: https://lumen.eightfold.ai/careers?domain=lumen.com
+    provider: eightfold
+    status: ok
+  - name: Starbucks
+    careers_url: https://starbucks.eightfold.ai/careers?domain=starbucks.com
+    provider: eightfold
+    eightfold_mode: pcsx
+    filters:
+      job_category:
+        - technology
+        - manufacturing and distribution
+        - marketing and brand management
+        - business strategy
+        - finance and accounting
+        - store development and design
+        - supply chain management
+        - legal and asset protection
+        - administrative support
+        - human resources
+        - public relations and communications
+        - sales and account management
+    status: ok
+  - name: KPMG
+    careers_url: https://uskpmgats.avature.net/careers/SearchResults
+    provider: avature
+    max_pages: 100
+    status: ok
+  - name: Bloomberg
+    careers_url: https://bloomberg.avature.net/careers/SearchJobs
+    provider: avature
+    max_pages: 60
+    status: ok
+  - name: Ross Stores
+    careers_url: https://jobs.rossstores.com/search/searchjobs
+    provider: activate
+    status: ok
+  - name: Etsy
+    careers_url: https://etsy.wd5.myworkdayjobs.com/Etsy_Careers
+    provider: workday
+    status: ok
+  - name: CDW
+    careers_url: https://cdw.wd5.myworkdayjobs.com/Careers
+    provider: workday
+    status: ok
+  - name: Jackson Financial
+    careers_url: https://jackson.wd1.myworkdayjobs.com/Jackson_Careers
+    provider: workday
+    status: ok
+  - name: Southern Company
+    careers_url: https://emje.fa.us6.oraclecloud.com/hcmUI/CandidateExperience/en/sites/SouthernCompanyJobs/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Bank of America (campus)
+    careers_url: https://bankcampuscareers.tal.net/vx/lang-en-GB/mobile-0/brand-4/candidate/jobboard/vacancy/1/adv/
+    provider: oleeo
+    status: ok
+  - name: Nomura (campus)
+    careers_url: https://nomuracampus.tal.net/vx/lang-en-GB/mobile-0/appcentre-ext/brand-4/candidate/jobboard/vacancy/1/adv/
+    provider: oleeo
+    status: ok
+  - name: Moelis (campus)
+    careers_url: https://moelis-careers.tal.net/vx/lang-en-GB/mobile-0/appcentre-ext/brand-4/wid-2/candidate/jobboard/vacancy/2/adv/
+    provider: oleeo
+    status: ok
+  - name: Ahold Delhaize USA
+    careers_url: https://vizi.vizirecruiter.com/aholddelhaizeusa-4547/vizis.json
+    provider: vizirecruiter
+    status: ok
+  - name: SAP
+    careers_url: https://careers.sap.com/search/?q=intern&locationsearch=United+States
+    provider: successfactors
+    status: ok
+  - name: HP
+    careers_url: https://hp.eightfold.ai/careers?domain=hp.com
+    provider: eightfold
+    eightfold_mode: pcsx
+    status: ok
+  - name: Qualcomm
+    careers_url: https://qualcomm.eightfold.ai/careers?domain=qualcomm.com
+    provider: eightfold
+    query: intern
+    eightfold_mode: pcsx
+    status: ok
+  - name: Microsoft
+    careers_url: https://microsoft.eightfold.ai/careers?domain=microsoft.com
+    provider: eightfold
+    query: intern
+    eightfold_mode: pcsx
+    status: ok
+  - name: Google
+    careers_url: https://www.google.com/about/careers/applications/jobs/results/?location=United%20States
+    provider: google
+    status: ok
+  - name: Apple
+    careers_url: https://jobs.apple.com/en-us/search?location=united-states-USA
+    provider: apple
+    status: ok
+  - name: Energy Transfer
+    careers_url: https://energytransfer.referrals.selectminds.com/ETP/
+    provider: selectminds
+    status: ok
+  - name: Sunoco LP
+    careers_url: https://energytransfer.referrals.selectminds.com/SUN/
+    provider: selectminds
+    status: ok
+  - name: NVR
+    careers_url: https://phg.tbe.taleo.net/phg01/ats/careers/v2/searchResults?org=NVRINC&cws=52
+    provider: tbe
+    status: ok
+  - name: Textron
+    careers_url: https://textron.taleo.net/careersection/textron/jobsearch.ftl?lang=en
+    provider: taleo
+    status: ok
+  - name: Welltower
+    careers_url: https://recruiting.ultipro.com/WEL1008WLLT/JobBoard/30969ce4-3b7e-40a6-b86c-34d3616fe0ed/
+    provider: ukg
+    status: ok
+  - name: Thor Industries
+    careers_url: https://workforcenow.adp.com/mascsr/default/mdf/recruitment/recruitment.html?cid=a4c08bd3-eedf-419a-9fb6-5d2ac8a3bafa&ccId=19000101_000001&lang=en_US
+    provider: adpwfn
+    status: ok
+  - name: Amazon
+    careers_url: https://www.amazon.jobs/en/search?base_query=intern&loc_query=United+States
+    provider: amazon
+    amazon:
+      base_query: intern
+      loc_query: United States
+    status: ok
+  - name: ExxonMobil
+    careers_url: https://jobs.exxonmobil.com
+    provider: successfactors
+    status: ok
+  - name: Centene
+    careers_url: https://centene.wd5.myworkdayjobs.com/Centene_External
+    provider: workday
+    status: ok
+  - name: Humana
+    careers_url: https://humana.wd5.myworkdayjobs.com/Humana_External_Career_Site
+    provider: workday
+    status: ok
+  - name: Johnson & Johnson
+    careers_url: https://jj.wd5.myworkdayjobs.com/JJ
+    provider: workday
+    status: ok
+  - name: American Express
+    careers_url: https://egug.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Delta Air Lines
+    careers_url: https://delta.avature.net/en_US/careers/SearchJobs
+    provider: avature
+    status: ok
+  - name: Intel
+    careers_url: https://intel.wd1.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: GE Aerospace
+    careers_url: https://geaerospace.wd5.myworkdayjobs.com/GE_ExternalSite
+    provider: workday
+    status: ok
+  - name: BNY
+    careers_url: https://eofe.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/BNY-Careers/jobs
+    provider: oraclecloud
+    facet: false
+    status: ok
+  - name: GE Vernova
+    careers_url: https://gevernova.wd5.myworkdayjobs.com/Vernova_ExternalSite
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: ONEOK
+    careers_url: https://oneok.wd1.myworkdayjobs.com/ONEOK
+    provider: workday
+    status: ok
+  - name: Ferguson Enterprises
+    careers_url: https://ferguson.wd1.myworkdayjobs.com/Ferguson_Experienced
+    provider: workday
+    status: ok
+  - name: Medline
+    careers_url: https://medline.wd5.myworkdayjobs.com/Medline
+    provider: workday
+    status: ok
+  - name: Freeport-McMoRan
+    careers_url: https://jobs.fcx.com
+    provider: successfactors
+    status: ok
+  - name: Genuine Parts
+    careers_url: https://genpt.wd1.myworkdayjobs.com/Careers
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: Lear
+    careers_url: https://jobs.lear.com
+    provider: successfactors
+    status: ok
+  - name: Group 1 Automotive
+    careers_url: https://careers-group1auto.icims.com/jobs/search
+    provider: icims
+    status: ok
+  - name: Tenet Healthcare
+    careers_url: https://eodr.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/jobs
+    provider: oraclecloud
+    facet: false
+    status: ok
+  - name: Pacific Life
+    careers_url: https://pacificlife.wd1.myworkdayjobs.com/PacificLifeCareers
+    provider: workday
+    status: ok
+  - name: LPL Financial Holdings
+    careers_url: https://lplfinancial.wd1.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: AECOM
+    careers_url: https://careers.smartrecruiters.com/AECOM2/
+    provider: smartrecruiters
+    max_pages: 1000
+    status: ok
+  - name: S&P Global
+    careers_url: https://spgi.wd5.myworkdayjobs.com/SPGI_Careers
+    provider: workday
+    status: ok
+  - name: Diamondback Energy
+    careers_url: https://diamondbackenergy.wd12.myworkdayjobs.com/DBE
+    provider: workday
+    status: ok
+  - name: Erie Insurance
+    careers_url: https://jobs.erieinsurance.com
+    provider: successfactors
+    status: ok
+  - name: Viatris
+    careers_url: https://viatris.wd5.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: CSX
+    careers_url: https://fa-eowa-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CSXCareers/jobs
+    provider: oraclecloud
+    status: ok
+  - name: DaVita
+    careers_url: https://davita.wd1.myworkdayjobs.com/DKC_External
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: Ball Corporation
+    careers_url: https://jobs.ball.com
+    provider: successfactors
+    status: ok
+  - name: Intercontinental Exchange
+    careers_url: https://careers.ice.com
+    api: https://careers.ice.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: AES
+    careers_url: https://aes.wd1.myworkdayjobs.com/AES_US
+    provider: workday
+    status: ok
+  - name: Air Products
+    careers_url: https://airproducts.wd5.myworkdayjobs.com/AP0001
+    provider: workday
+    status: ok
+  - name: Owens Corning
+    careers_url: https://careers.owenscorning.com
+    provider: successfactors
+    status: ok
+  - name: FM
+    careers_url: https://careers.fm.com
+    api: https://careers.fm.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: International Flavors & Fragrances
+    careers_url: https://iff.wd5.myworkdayjobs.com/iff_careers
+    provider: workday
+    status: ok
+  - name: American Tower
+    careers_url: https://hdsn.fa.us6.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Constellation Brands
+    careers_url: https://cbrands.wd5.myworkdayjobs.com/CBI_External_Careers
+    provider: workday
+    status: ok
+  - name: Concentrix
+    careers_url: https://cnx.wd1.myworkdayjobs.com/external_global
+    provider: workday
+    status: ok
+  - name: Western Digital
+    careers_url: https://careers.smartrecruiters.com/WesternDigital/
+    provider: smartrecruiters
+    status: ok
+  - name: APA Corporation
+    careers_url: https://careers.apachecorp.com
+    provider: successfactors
+    status: ok
+  - name: Packaging Corp. of America
+    careers_url: https://jobs.dayforcehcm.com/en-US/pca/CANDIDATEPORTAL
+    provider: dayforce
+    status: ok
+  - name: Eastman Chemical
+    careers_url: https://jobs.eastman.com
+    provider: successfactors
+    status: ok
+  - name: Graphic Packaging
+    careers_url: https://careers.graphicpkg.com/search-jobs
+    provider: graphicpkg
+    status: ok
+  - name: Rockwell Automation
+    careers_url: https://rockwellautomation.wd1.myworkdayjobs.com/External_Rockwell_Automation
+    provider: workday
+    status: ok
+  - name: Marvell Technology
+    careers_url: https://marvell.wd1.myworkdayjobs.com/MarvellCareers
+    provider: workday
+    status: ok
+  - name: Vulcan Materials
+    careers_url: https://careers.vulcanmaterials.com/hcmUI/CandidateExperience/en/sites/careers/jobs
+    api: https://vmcfa-prod-iccgjb.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Ingersoll Rand
+    careers_url: https://careers.irco.com
+    provider: successfactors
+    status: ok
+  - name: Resideo
+    careers_url: https://ehtl.fa.us6.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Santander
+    careers_url: https://santander.wd3.myworkdayjobs.com/SantanderCareers
+    provider: workday
+    facet: false
+    status: ok
+  - name: Societe Generale
+    careers_url: https://socgen.taleo.net/careersection/sgcareers/jobsearch.ftl?lang=en
+    provider: taleo
+    status: ok
+  - name: TD Bank
+    careers_url: https://td.wd3.myworkdayjobs.com/TD_Bank_Careers
+    provider: workday
+    facet: false
+    status: ok
+  - name: ENGIE North America
+    careers_url: https://jobs.engie.com/search/?facetFilters=%7B%22cust_companyname%22%3A%5B%22ENGIE+North+America%22%5D%7D
+    provider: successfactors
+    max_jobs: 5000
+    status: ok
+  - name: Circle K
+    careers_url: https://circlek.wd3.myworkdayjobs.com/CircleKStoreJobs
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: Accenture
+    careers_url: https://accenture.wd103.myworkdayjobs.com/AccentureCareers
+    provider: workday
+    keywords:
+      - internship
+      - summer analyst
+      - summer associate
+      - early career
+    max_pages: 1500
+    status: ok
+  - name: Tokio Marine HCC
+    careers_url: https://tmhcc.wd108.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: Volvo Group
+    careers_url: https://jobs.volvogroup.com
+    provider: successfactors
+    status: ok
+  - name: ZF
+    careers_url: https://jobs.zf.com
+    provider: successfactors
+    status: ok
+  - name: CRH
+    careers_url: https://jobs.crh.com
+    provider: successfactors
+    status: ok
+  - name: Empower
+    careers_url: https://empower.wd12.myworkdayjobs.com/empower
+    provider: workday
+    status: ok
+  - name: Chevron
+    careers_url: https://chevron.wd5.myworkdayjobs.com/jobs
+    provider: workday
+    status: ok
+  - name: Goldman Sachs
+    careers_url: https://hdpc.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/LateralHiring/jobs
+    provider: oraclecloud
+    facet: false
+    status: ok
+  - name: Boeing
+    careers_url: https://boeing.wd1.myworkdayjobs.com/EXTERNAL_CAREERS
+    provider: workday
+    facet: false
+    status: ok
+  - name: MetLife
+    careers_url: https://www.metlifecareers.com/en_US/ml/SearchJobs
+    provider: avature
+    status: ok
+  - name: Galaxy Digital
+    careers_url: https://job-boards.greenhouse.io/galaxydigitalservices
+    provider: greenhouse
+    status: ok
+  - name: Ingram Micro
+    careers_url: https://ingrammicro.wd5.myworkdayjobs.com/IngramMicro
+    provider: workday
+    status: ok
+  - name: John Deere
+    careers_url: https://jobs.deere.com
+    provider: successfactors
+    status: ok
+  - name: Honeywell
+    careers_url: https://ibqbjb.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Micron Technology
+    careers_url: https://micron.wd1.myworkdayjobs.com/External
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: PayPal
+    careers_url: https://paypal.wd1.myworkdayjobs.com/jobs
+    provider: workday
+    status: ok
+  - name: NRG Energy
+    careers_url: https://careers.nrgenergy.com/nrg
+    provider: successfactors
+    status: ok
+  - name: Applied Materials
+    careers_url: https://amat.wd1.myworkdayjobs.com/External
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: Constellation Energy
+    careers_url: https://jobs.constellationenergy.com
+    api: https://jobs.constellationenergy.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: BlackRock
+    careers_url: https://blackrock.wd1.myworkdayjobs.com/BlackRock_Professional
+    provider: workday
+    status: ok
+  - name: Synchrony Financial
+    careers_url: https://synchronyfinancial.wd5.myworkdayjobs.com/careers
+    provider: workday
+    status: ok
+  - name: Avnet
+    careers_url: https://avnet.wd1.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: GE Healthcare
+    careers_url: https://gehc.wd5.myworkdayjobs.com/GEHC_ExternalSite
+    provider: workday
+    status: ok
+  - name: American Family Insurance Group
+    careers_url: https://amfam.wd1.myworkdayjobs.com/Careers
+    provider: workday
+    status: ok
+  - name: Global Partners
+    careers_url: https://global.wd1.myworkdayjobs.com/globalpartnerscareers
+    provider: workday
+    status: ok
+  - name: Auto-Owners Insurance
+    careers_url: https://aoins.wd5.myworkdayjobs.com/AutoOwners
+    provider: workday
+    status: ok
+  - name: Grainger
+    careers_url: https://jobs.grainger.com
+    provider: successfactors
+    status: ok
+  - name: Dick's Sporting Goods
+    careers_url: https://dickssportinggoods.wd1.myworkdayjobs.com/DSG
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: Emcor
+    careers_url: https://careers-emcorgroup.icims.com/jobs/search
+    provider: icims
+    status: ok
+  - name: C.H. Robinson
+    careers_url: https://chrobinson.wd5.myworkdayjobs.com/CHRobinson
+    provider: workday
+    status: ok
+  - name: PPG Industries
+    careers_url: https://ppg.wd5.myworkdayjobs.com/PPG_CAREERS
+    provider: workday
+    status: ok
+  - name: Builders FirstSource
+    careers_url: https://careers.bldr.com
+    api: https://careers.bldr.com/api/jobs
+    provider: jibeapply
+    max_pages: 5000
+    status: ok
+  - name: EchoStar
+    careers_url: https://jobs.echostar.com
+    api: https://jobs.echostar.com/api/jobs
+    provider: jibeapply
+    max_pages: 5000
+    status: ok
+  - name: First Citizens Bank
+    careers_url: https://jobs.firstcitizens.com
+    api: https://jobs.firstcitizens.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: MasTec
+    careers_url: https://careers.mastec.com
+    api: https://careers.mastec.com/api/jobs
+    provider: jibeapply
+    max_pages: 5000
+    status: ok
+  - name: LKQ
+    careers_url: https://lkqcorp.wd5.myworkdayjobs.com/ExternalCareerSite-LKQ
+    provider: workday
+    status: ok
+  - name: Eversource Energy
+    careers_url: https://eversource.wd1.myworkdayjobs.com/ExternalSite
+    provider: workday
+    status: ok
+  - name: Entergy
+    careers_url: https://jobs.entergy.com
+    provider: successfactors
+    status: ok
+  - name: Cincinnati Financial
+    careers_url: https://cinfin.taleo.net/careersection/ex/jobsearch.ftl?lang=en
+    provider: taleo
+    status: ok
+  - name: PSEG
+    careers_url: https://jobs.pseg.com
+    provider: successfactors
+    status: ok
+  - name: Jacobs
+    careers_url: https://careers.jacobs.com/en_US/careers/SearchJobs
+    provider: avature
+    status: ok
+  - name: KeyBank
+    careers_url: https://keybank.wd5.myworkdayjobs.com/External_Career_Site
+    provider: workday
+    facet: false
+    status: ok
+  - name: Expeditors Intl. of Washington
+    careers_url: https://jobs.smartrecruiters.com/Expeditors/
+    provider: smartrecruiters
+    status: ok
+  - name: AGCO
+    careers_url: https://careers.agcocorp.com
+    provider: successfactors
+    status: ok
+  - name: WEC Energy Group
+    careers_url: https://careers.wecenergygroup.com
+    provider: successfactors
+    status: ok
+  - name: QVC
+    careers_url: https://qvc.wd5.myworkdayjobs.com/QRG
+    provider: workday
+    status: ok
+  - name: Old Republic
+    careers_url: https://oldrepublic.wd1.myworkdayjobs.com/oldrepublictitle
+    provider: workday
+    status: ok
+  - name: Ovintiv
+    careers_url: https://ovintiv.wd3.myworkdayjobs.com/ovintivcareers
+    provider: workday
+    status: ok
+  - name: ABM Industries
+    careers_url: https://eiqg.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/jobs
+    provider: oraclecloud
+    facet: false
+    status: ok
+  - name: Advance Auto Parts
+    careers_url: https://advanceauto.wd5.myworkdayjobs.com/AdvanceExternalCareers
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: Solventum
+    careers_url: https://healthcare.wd1.myworkdayjobs.com/Search
+    provider: workday
+    status: ok
+  - name: American Financial
+    careers_url: https://gaig.wd1.myworkdayjobs.com/GAIG_External
+    provider: workday
+    status: ok
+  - name: Core & Main
+    careers_url: https://coreandmain.wd1.myworkdayjobs.com/CoreandMain
+    provider: workday
+    status: ok
+  - name: Toyota North America
+    careers_url: https://toyota.wd503.myworkdayjobs.com/TMNA
+    provider: workday
+    status: ok
+  - name: T-Mobile
+    careers_url: https://tmobile.wd1.myworkdayjobs.com/External
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: Royal Bank of Canada
+    careers_url: https://rbc.wd3.myworkdayjobs.com/RBCGLOBAL1
+    provider: workday
+    facet: false
+    status: ok
+  - name: Sony
+    careers_url: https://sonyglobal.wd1.myworkdayjobs.com/SonyGlobalCareers
+    provider: workday
+    status: ok
+  - name: Nissan
+    careers_url: https://alliance.wd3.myworkdayjobs.com/nissanjobs
+    provider: workday
+    status: ok
+  - name: Barclays
+    careers_url: https://barclays.wd3.myworkdayjobs.com/External_Career_Site_Barclays
+    provider: workday
+    facet: false
+    status: ok
+  - name: 7-Eleven
+    careers_url: https://my7elevenhr.wd12.myworkdayjobs.com/Careers
+    provider: workday
+    status: ok
+  - name: AstraZeneca
+    careers_url: https://astrazeneca.wd3.myworkdayjobs.com/Careers
+    provider: workday
+    status: ok
+  - name: Enbridge
+    careers_url: https://enbridge.wd3.myworkdayjobs.com/enbridge_careers
+    provider: workday
+    status: ok
+  - name: Siemens Energy
+    careers_url: https://jobs.siemens-energy.com/en_US/jobs/SearchJobsUS
+    provider: avature
+    status: ok
+  - name: Mitsubishi Power Americas
+    careers_url: https://mhicareers.com
+    provider: successfactors
+    status: ok
+  - name: Linde
+    careers_url: https://linde.csod.com/ux/ats/careersite/20/home?c=linde
+    provider: csod
+    status: ok
+  - name: JPMorgan Chase
+    careers_url: https://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/jobs
+    provider: oraclecloud
+    max_pages: 150
+    status: ok
+  - name: General Motors
+    careers_url: https://generalmotors.wd5.myworkdayjobs.com/Careers_GM
+    provider: workday
+    status: ok
+  - name: Comcast
+    careers_url: https://comcast.wd115.myworkdayjobs.com/Comcast_Careers
+    provider: workday
+    status: ok
+  - name: UPS
+    careers_url: https://hcmportal.wd5.myworkdayjobs.com/Search
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: HCA Healthcare
+    careers_url: https://hcahealthcare.wd3.myworkdayjobs.com/HCACareers
+    provider: workday
+    status: ok
+  - name: AbbVie
+    careers_url: https://jobs.smartrecruiters.com/AbbVie/
+    provider: smartrecruiters
+    status: ok
+  - name: Uber
+    careers_url: https://iaziqy.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/UberCareers/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Molina Healthcare
+    careers_url: https://hckd.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: CBRE
+    careers_url: https://careers.cbre.com/en_US/careers/SearchJobs
+    provider: avature
+    status: ok
+  - name: Amgen
+    careers_url: https://amgen.wd1.myworkdayjobs.com/Careers
+    provider: workday
+    status: ok
+  - name: GuideWell Mutual
+    careers_url: https://fa-etum-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Jabil
+    careers_url: https://jabil.wd5.myworkdayjobs.com/Jabil_Careers
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: The Hartford
+    careers_url: https://thehartford.wd5.myworkdayjobs.com/Careers_External
+    provider: workday
+    status: ok
+  - name: Live Nation Entertainment
+    careers_url: https://livenation.wd503.myworkdayjobs.com/LNExternalSite
+    provider: workday
+    status: ok
+  - name: Block
+    careers_url: https://job-boards.greenhouse.io/block
+    provider: greenhouse
+    status: ok
+  - name: Supermicro
+    careers_url: https://jobs.supermicro.com
+    provider: successfactors
+    max_jobs: 5000
+    status: ok
+  - name: Southern California Edison
+    careers_url: https://apply.edisoncareers.com
+    provider: successfactors
+    status: ok
+  - name: Aramark
+    careers_url: https://aramarkcareers.com
+    provider: successfactors
+    max_jobs: 5000
+    status: ok
+  - name: Kiewit
+    careers_url: https://kiewitcareers.kiewit.com
+    provider: successfactors
+    status: ok
+  - name: Vistra
+    careers_url: https://vst.wd5.myworkdayjobs.com/vistra_careers
+    provider: workday
+    status: ok
+  - name: Devon Energy
+    careers_url: https://devonenergy.wd5.myworkdayjobs.com/Careers
+    provider: workday
+    status: ok
+  - name: Kinder Morgan
+    careers_url: https://careers.kindermorgan.com
+    api: https://careers.kindermorgan.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: BitGo
+    careers_url: https://job-boards.greenhouse.io/bitgo
+    provider: greenhouse
+    status: ok
+  - name: DTE Energy
+    careers_url: https://careers.dteenergy.com
+    provider: successfactors
+    status: ok
+  - name: Sonic Automotive
+    careers_url: https://jobs.smartrecruiters.com/SonicAutomotive/
+    provider: smartrecruiters
+    status: ok
+  - name: Expedia Group
+    careers_url: https://expedia.wd108.myworkdayjobs.com/search
+    provider: workday
+    status: ok
+  - name: Blackstone
+    careers_url: https://blackstone.wd1.myworkdayjobs.com/Blackstone_Careers
+    provider: workday
+    status: ok
+  - name: Reliance
+    careers_url: https://careers.reliance.com
+    api: https://careers.reliance.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: LabCorp
+    careers_url: https://labcorp.wd1.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: ServiceNow
+    careers_url: https://jobs.smartrecruiters.com/ServiceNow/
+    provider: smartrecruiters
+    status: ok
+  - name: Graybar Electric
+    careers_url: https://graybar.wd1.myworkdayjobs.com/Careers
+    provider: workday
+    status: ok
+  - name: Community Health Systems
+    careers_url: https://fa-evxo-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: KLA
+    careers_url: https://kla.wd1.myworkdayjobs.com/Search
+    provider: workday
+    status: ok
+  - name: Vertex Pharmaceuticals
+    careers_url: https://vrtx.wd501.myworkdayjobs.com/Vertex_Careers
+    provider: workday
+    status: ok
+  - name: Thrivent
+    careers_url: https://thrivent.wd5.myworkdayjobs.com/external
+    provider: workday
+    status: ok
+  - name: Analog Devices
+    careers_url: https://analogdevices.wd1.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: Autoliv
+    careers_url: https://career.autoliv.com/jobs
+    provider: teamtailor
+    status: ok
+  - name: Oshkosh
+    careers_url: https://oshkoshcorporation.wd5.myworkdayjobs.com/Oshkosh
+    provider: workday
+    status: ok
+  - name: Intuitive Surgical
+    careers_url: https://jobs.smartrecruiters.com/Intuitive/
+    provider: smartrecruiters
+    status: ok
+  - name: Zoetis
+    careers_url: https://zoetis.wd5.myworkdayjobs.com/zoetis
+    provider: workday
+    status: ok
+  - name: Comfort Systems USA
+    careers_url: https://comfortsystemsusa.wd1.myworkdayjobs.com/Corpcareers
+    provider: workday
+    status: ok
+  - name: Avery Dennison
+    careers_url: https://jobs.smartrecruiters.com/AveryDennison/
+    provider: smartrecruiters
+    status: ok
+  - name: NOV
+    careers_url: https://egay.fa.us6.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2001/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Optimum (Altice USA)
+    careers_url: https://www.optimumcareers.com
+    provider: successfactors
+    status: ok
+  - name: Howmet Aerospace
+    careers_url: https://fa-exty-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Post Holdings
+    careers_url: https://jobs.postholdings.com
+    api: https://jobs.postholdings.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: Coterra Energy
+    careers_url: https://devonenergy.wd5.myworkdayjobs.com/Careers
+    provider: workday
+    status: ok
+  - name: Mitsubishi Corporation (Americas)
+    careers_url: https://jobs.dayforcehcm.com/en-US/mca/MICMCACombinedCareerSite
+    provider: dayforce
+    status: ok
+  - name: MUFG
+    careers_url: https://mufgub.wd3.myworkdayjobs.com/MUFG-Careers
+    provider: workday
+    facet: false
+    status: ok
+  - name: Deutsche Bank
+    careers_url: https://db.wd3.myworkdayjobs.com/DBWebsite
+    provider: workday
+    facet: false
+    status: ok
+  - name: SK hynix
+    careers_url: https://job-boards.greenhouse.io/skhynixamerica
+    provider: greenhouse
+    status: ok
+  - name: Rio Tinto
+    careers_url: https://riotinto.wd3.myworkdayjobs.com/RioTinto_Careers
+    provider: workday
+    status: ok
+  - name: Compass Group USA
+    careers_url: https://jobs.compassgroupcareers.com
+    provider: successfactors
+    status: ok
+  - name: GE Appliances
+    careers_url: https://haier.wd3.myworkdayjobs.com/GE_Appliances
+    provider: workday
+    status: ok
+  - name: Cigna Group
+    careers_url: https://cigna.wd5.myworkdayjobs.com/cignacareers
+    provider: workday
+    status: ok
+  - name: Citi
+    careers_url: https://citi.wd5.myworkdayjobs.com/2
+    provider: workday
+    facet: false
+    max_pages: 1500
+    status: ok
+  - name: Wells Fargo
+    careers_url: https://wf.wd1.myworkdayjobs.com/WellsFargoJobs
+    provider: workday
+    facet: false
+    status: ok
+  - name: Allstate
+    careers_url: https://allstate.wd5.myworkdayjobs.com/allstate_careers
+    provider: workday
+    status: ok
+  - name: TJX
+    careers_url: https://tjx.wd1.myworkdayjobs.com/TJX_EXTERNAL
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: Liberty Mutual
+    careers_url: https://libertymutual.eightfold.ai/careers?domain=libertymutual.com
+    provider: eightfold
+    status: ok
+  - name: Netflix
+    careers_url: https://netflix.eightfold.ai/careers?domain=netflix.com
+    provider: eightfold
+    status: ok
+  - name: Visa
+    careers_url: https://visa.wd5.myworkdayjobs.com/Visa
+    provider: workday
+    status: ok
+  - name: AMD
+    careers_url: https://careers.amd.com
+    api: https://careers.amd.com/api/jobs
+    provider: jibeapply
+    max_pages: 5000
+    status: ok
+  - name: Nucor
+    careers_url: https://jobs.nucor.com
+    provider: successfactors
+    status: ok
+  - name: PBF Energy
+    careers_url: https://pbfenergy.wd1.myworkdayjobs.com/PBF
+    provider: workday
+    status: ok
+  - name: AutoNation
+    careers_url: https://autonation.wd5.myworkdayjobs.com/Careers
+    provider: workday
+    status: ok
+  - name: Stryker
+    careers_url: https://stryker.wd1.myworkdayjobs.com/StrykerCareers
+    provider: workday
+    status: ok
+  - name: RGA
+    careers_url: https://rgare.wd1.myworkdayjobs.com/Careers
+    provider: workday
+    status: ok
+  - name: Newmont
+    careers_url: https://jobs.newmont.com/us/en/search-results
+    provider: phenom
+    phenom:
+      urlPrefix: us/en
+    status: ok
+  - name: American Electric Power
+    careers_url: https://aep.wd1.myworkdayjobs.com/AEPCareerSite
+    provider: workday
+    status: ok
+  - name: Carvana
+    careers_url: https://job-boards.greenhouse.io/carvana
+    provider: greenhouse
+    status: ok
+  - name: AutoZone
+    careers_url: https://egud.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    max_pages: 150
+    status: ok
+  - name: Corebridge Financial
+    careers_url: https://corebridgefinancial.wd1.myworkdayjobs.com/CorebridgeFinancial
+    provider: workday
+    status: ok
+  - name: Steel Dynamics
+    careers_url: https://careers-steeldynamics.icims.com
+    provider: icims
+    status: ok
+  - name: Texas Instruments
+    careers_url: https://edbz.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Aflac
+    careers_url: https://careers.aflac.com
+    provider: successfactors
+    status: ok
+  - name: Markel Group
+    careers_url: https://markelcorp.wd5.myworkdayjobs.com/GlobalCareers
+    provider: workday
+    status: ok
+  - name: United Rentals
+    careers_url: https://ur.wd1.myworkdayjobs.com/URCareers
+    provider: workday
+    status: ok
+  - name: Corning
+    careers_url: https://corningjobs.corning.com
+    provider: successfactors
+    max_jobs: 5000
+    status: ok
+  - name: Stanley Black & Decker
+    careers_url: https://sbdinc.wd1.myworkdayjobs.com/Stanley_Black_Decker_Career_Site
+    provider: workday
+    status: ok
+  - name: W.R. Berkley
+    careers_url: https://careers-berkley.icims.com
+    provider: icims
+    status: ok
+  - name: Fidelity National Financial
+    careers_url: https://fntg.wd5.myworkdayjobs.com/FNF-Careers
+    provider: workday
+    status: ok
+  - name: Western & Southern Financial Group
+    careers_url: https://careers-westernsouthern.icims.com
+    provider: icims
+    status: ok
+  - name: Gallagher
+    careers_url: https://jobs.ajg.com
+    api: https://jobs.ajg.com/api/jobs
+    provider: jibeapply
+    max_pages: 5000
+    status: ok
+  - name: M&T Bank
+    careers_url: https://mtb.wd5.myworkdayjobs.com/MTB
+    provider: workday
+    facet: false
+    status: ok
+  - name: DXC Technology
+    careers_url: https://dxctechnology.wd1.myworkdayjobs.com/DXCJobs
+    provider: workday
+    status: ok
+  - name: Huntington Bancshares
+    careers_url: https://huntington.wd12.myworkdayjobs.com/HNBcareers
+    provider: workday
+    facet: false
+    status: ok
+  - name: Expand Energy
+    careers_url: https://jobs.expandenergy.com
+    provider: successfactors
+    status: ok
+  - name: Williams
+    careers_url: https://williams.wd5.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: Westlake
+    careers_url: https://westlake.wd1.myworkdayjobs.com/Westlake
+    provider: workday
+    status: ok
+  - name: The Andersons
+    careers_url: https://andersonsinc.wd1.myworkdayjobs.com/TheAndersonsCareers
+    provider: workday
+    status: ok
+  - name: Mohawk Industries
+    careers_url: https://careers.mohawkind.com
+    provider: successfactors
+    status: ok
+  - name: Cintas
+    careers_url: https://careers.cintas.com
+    provider: successfactors
+    max_jobs: 5000
+    status: ok
+  - name: Ace Hardware
+    careers_url: https://acehardware.wd1.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: CenterPoint Energy
+    careers_url: https://careers.centerpointenergy.com
+    provider: successfactors
+    status: ok
+  - name: PPL
+    careers_url: https://careers.pplweb.com
+    api: https://careers.pplweb.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: J.M. Smucker
+    careers_url: https://smucker.wd5.myworkdayjobs.com/US_External_Careers
+    provider: workday
+    status: ok
+  - name: SiriusXM
+    careers_url: https://careers.siriusxm.com
+    api: https://careers.siriusxm.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: Insight Enterprises
+    careers_url: https://jobsearch.insight.com
+    provider: successfactors
+    status: ok
+  - name: Sonoco
+    careers_url: https://sonoco.wd1.myworkdayjobs.com/CorporateCareers
+    provider: workday
+    status: ok
+  - name: Primoris Services
+    careers_url: https://prim.wd108.myworkdayjobs.com/Primoris
+    provider: workday
+    status: ok
+  - name: Samsung
+    careers_url: https://sec.wd3.myworkdayjobs.com/Samsung_Careers
+    provider: workday
+    status: ok
+  - name: TSMC
+    careers_url: https://careers.tsmc.com/en_US/careers/SearchJobs
+    provider: avature
+    status: ok
+  - name: NTT DATA
+    careers_url: https://careers-inc.nttdata.com
+    provider: successfactors
+    max_jobs: 5000
+    status: ok
+  - name: Siemens
+    careers_url: https://jobs.siemens.com/en_US/externaljobs/SearchJobs
+    provider: avature
+    status: ok
+  - name: Genentech
+    careers_url: https://roche.wd3.myworkdayjobs.com/ROG-A2O-GENE
+    provider: workday
+    status: ok
+  - name: SMBC
+    careers_url: https://careers.smbcgroup.com/smbc
+    provider: successfactors
+    status: ok
+  - name: U.S. Steel
+    careers_url: https://sjobs.brassring.com/TGnewUI/Search/Home/Home?partnerid=25307&siteid=5238
+    provider: brassring
+    status: ok
+  - name: Turner Construction
+    careers_url: https://turnerconstruction.csod.com/ux/ats/careersite/1/home?c=turnerconstruction
+    provider: csod
+    status: ok
+  - name: Veolia
+    careers_url: https://jobs.smartrecruiters.com/VeoliaEnvironnementSA/
+    provider: smartrecruiters
+    status: ok
+  - name: IKEA US
+    careers_url: https://www.seeacareerwithus.com/search-jobs
+    provider: msts
+    status: ok
+  - name: Magna
+    careers_url: https://magna.wd3.myworkdayjobs.com/Magna
+    provider: workday
+    status: ok
+  - name: thyssenkrupp
+    careers_url: https://thyssenkruppmaterialsna.wd12.myworkdayjobs.com/1
+    provider: workday
+    status: ok
+  - name: Reynolds American (BAT)
+    careers_url: https://careers.bat.com/en/search-jobs
+    provider: radancy
+    status: ok
+  - name: CVS Health
+    careers_url: https://cvshealth.wd1.myworkdayjobs.com/CVS_Health_Careers
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: Cardinal Health
+    careers_url: https://cardinalhealth.wd1.myworkdayjobs.com/EXT
+    provider: workday
+    status: ok
+  - name: State Farm
+    careers_url: https://jobs.statefarm.com
+    api: https://jobs.statefarm.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: Tesla
+    careers_url: https://www.tesla.com/careers/search/?type=intern&site=US
+    provider: browser-only
+    status: browser
+  - name: Dell Technologies
+    careers_url: https://enterpriseplatform.dell.com/hcmUI/CandidateExperience/en/sites/careers/jobs
+    api: https://enterpriseplatform.dell.com/hcmUI/CandidateExperience/en/sites/CX_1001/jobs
+    provider: oraclecloud
+    facet: false
+    status: ok
+  - name: Lowe's
+    careers_url: https://lowes.wd5.myworkdayjobs.com/LWS_External_CS
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: Caterpillar
+    careers_url: https://cat.wd5.myworkdayjobs.com/CaterpillarCareers
+    provider: workday
+    status: ok
+  - name: Oracle
+    careers_url: https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_45001/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Travelers
+    careers_url: https://travelers.wd5.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: Abbott
+    careers_url: https://abbott.wd5.myworkdayjobs.com/abbottcareers
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: US Foods
+    careers_url: https://usfoods.wd1.myworkdayjobs.com/usfoodscareersExternal
+    provider: workday
+    status: ok
+  - name: Coupang
+    careers_url: https://job-boards.greenhouse.io/coupang
+    provider: greenhouse
+    status: ok
+  - name: Quanta Services
+    careers_url: https://careers-quanta.icims.com
+    provider: icims
+    status: ok
+  - name: HF Sinclair
+    careers_url: https://careers.hfsinclair.com
+    provider: successfactors
+    status: ok
+  - name: 3M
+    careers_url: https://3m.wd1.myworkdayjobs.com/Search
+    provider: workday
+    status: ok
+  - name: Sherwin-Williams
+    careers_url: https://ejhp.fa.us6.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Carrier Global
+    careers_url: https://carrier.wd5.myworkdayjobs.com/jobs
+    provider: workday
+    status: ok
+  - name: Boston Scientific
+    careers_url: https://bostonscientific.eightfold.ai/careers?domain=bostonscientific.com
+    provider: eightfold
+    status: ok
+  - name: Intuit
+    careers_url: https://jobs.intuit.com/search-jobs
+    provider: radancy
+    status: ok
+  - name: Loews
+    careers_url: https://loewscorp.wd1.myworkdayjobs.com/loewscorp
+    provider: workday
+    status: ok
+  - name: Emerson Electric
+    careers_url: https://hdjq.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Universal Health Services
+    careers_url: https://jobs.uhs.com
+    api: https://jobs.uhs.com/api/jobs
+    provider: jibeapply
+    max_pages: 5000
+    status: ok
+  - name: Targa Resources
+    careers_url: https://targaresources.taleo.net/careersection/ex/jobsearch.ftl?lang=en
+    provider: taleo
+    status: ok
+  - name: Dominion Energy
+    careers_url: https://careers.dominionenergy.com
+    provider: successfactors
+    status: ok
+  - name: Ecolab
+    careers_url: https://ecolab.wd1.myworkdayjobs.com/Ecolab_External
+    provider: workday
+    status: ok
+  - name: Kenvue
+    careers_url: https://kenvue.wd5.myworkdayjobs.com/kenvue
+    provider: workday
+    status: ok
+  - name: Xcel Energy
+    careers_url: https://xcelenergy.wd1.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: Regeneron Pharmaceuticals
+    careers_url: https://regeneron.wd1.myworkdayjobs.com/Careers
+    provider: workday
+    status: ok
+  - name: Alaska Air Group
+    careers_url: https://careers.alaskaair.com/jobs/
+    provider: directemployers
+    status: ok
+  - name: Venture Global
+    careers_url: https://venturegloballng.wd108.myworkdayjobs.com/External_Careers
+    provider: workday
+    status: ok
+  - name: Henry Schein
+    careers_url: https://henryschein.wd1.myworkdayjobs.com/External_Careers
+    provider: workday
+    status: ok
+  - name: Alcoa
+    careers_url: https://alcoa.wd5.myworkdayjobs.com/Careers
+    provider: workday
+    status: ok
+  - name: Citizens Financial Group
+    careers_url: https://hcgn.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Motorola Solutions
+    careers_url: https://motorolasolutions.wd5.myworkdayjobs.com/Careers
+    provider: workday
+    status: ok
+  - name: Wabtec
+    careers_url: https://careers.smartrecruiters.com/Wabtec/
+    provider: smartrecruiters
+    status: ok
+  - name: Delek US
+    careers_url: https://jobs.delekus.com
+    provider: successfactors
+    status: ok
+  - name: Campbell's
+    careers_url: https://campbellsoup.wd5.myworkdayjobs.com/ExternalCareers_GlobalSite
+    provider: workday
+    status: ok
+  - name: Dana Incorporated
+    careers_url: https://jobs.dana.com
+    provider: successfactors
+    status: ok
+  - name: Workday
+    careers_url: https://workday.wd5.myworkdayjobs.com/Workday
+    provider: workday
+    status: ok
+  - name: Equinix
+    careers_url: https://equinix.wd1.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: Xylem
+    careers_url: https://xylem.wd5.myworkdayjobs.com/xylem-careers
+    provider: workday
+    status: ok
+  - name: Securian Financial Group
+    careers_url: https://hq.wd12.myworkdayjobs.com/Securian_External
+    provider: workday
+    status: ok
+  - name: Consumers Energy (CMS Energy)
+    careers_url: https://careers.consumersenergy.com
+    provider: successfactors
+    status: ok
+  - name: Zimmer Biomet
+    careers_url: https://careers.zimmerbiomet.com/us/en/search-results
+    provider: phenom
+    phenom:
+      urlPrefix: us/en
+    status: ok
+  - name: Taylor Morrison Home
+    careers_url: https://taylormorrison.wd1.myworkdayjobs.com/TaylorMorrisonCareers
+    provider: workday
+    status: ok
+  - name: Commercial Metals
+    careers_url: https://jobs.cmc.com
+    provider: successfactors
+    status: ok
+  - name: Masco
+    careers_url: https://masco.wd1.myworkdayjobs.com/Masco
+    provider: workday
+    status: ok
+  - name: bp
+    careers_url: https://bpinternational.wd3.myworkdayjobs.com/bpCareers
+    provider: workday
+    status: ok
+  - name: AXA
+    careers_url: https://careers.axa.com
+    api: https://careers.axa.com/api/jobs
+    provider: jibeapply
+    max_pages: 5000
+    status: ok
+  - name: Brookfield
+    careers_url: https://brookfield.wd5.myworkdayjobs.com/brookfield
+    provider: workday
+    status: ok
+  - name: BASF
+    careers_url: https://basf.jobs
+    provider: successfactors
+    status: ok
+  - name: Mizuho
+    careers_url: https://mizuho.wd1.myworkdayjobs.com/mizuhoamericas
+    provider: workday
+    status: ok
+  - name: Daimler Truck
+    careers_url: https://dtna.wd5.myworkdayjobs.com/DTNA_external
+    provider: workday
+    status: ok
+  - name: Schneider Electric
+    careers_url: https://careers.se.com
+    api: https://careers.se.com/api/jobs
+    provider: jibeapply
+    max_pages: 5000
+    status: ok
+  - name: Symetra
+    careers_url: https://symetra.eightfold.ai/careers?domain=symetra.com
+    provider: eightfold
+    status: ok
+  - name: Medtronic
+    careers_url: https://medtronic.wd1.myworkdayjobs.com/MedtronicCareers
+    provider: workday
+    status: ok
+  - name: McKesson
+    careers_url: https://mckesson.wd3.myworkdayjobs.com/External_Careers
+    provider: workday
+    status: ok
+  - name: Freddie Mac
+    careers_url: https://freddiemac.wd5.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: Merck
+    careers_url: https://msd.wd5.myworkdayjobs.com/SearchJobs
+    provider: workday
+    status: ok
+  - name: Bristol Myers Squibb
+    careers_url: https://bristolmyerssquibb.wd5.myworkdayjobs.com/BMS
+    provider: workday
+    status: ok
+  - name: Cummins
+    careers_url: https://fa-espx-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: PACCAR
+    careers_url: https://jobs.paccar.com
+    provider: successfactors
+    status: ok
+  - name: International Paper
+    careers_url: https://iazbqy.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Danaher
+    careers_url: https://danaher.wd1.myworkdayjobs.com/DanaherJobs
+    provider: workday
+    status: ok
+  - name: WESCO International
+    careers_url: https://eklm.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Macy's
+    careers_url: https://ebwh.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/jobs
+    provider: oraclecloud
+    max_pages: 150
+    status: ok
+  - name: BJ's Wholesale Club
+    careers_url: https://bjswholesaleclub.wd1.myworkdayjobs.com/BJsCareers
+    provider: workday
+    status: ok
+  - name: Cheniere Energy
+    careers_url: https://hcgi.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Guardian Life
+    careers_url: https://guardianlife.wd5.myworkdayjobs.com/Guardian-Life-Careers
+    provider: workday
+    status: ok
+  - name: Goodyear Tire & Rubber
+    careers_url: https://goodyear.wd1.myworkdayjobs.com/GoodyearCareers
+    provider: workday
+    status: ok
+  - name: Asbury Automotive
+    careers_url: https://jobs.dayforcehcm.com/en-US/asburyauto/ASBURYCAREERSITE
+    provider: dayforce
+    status: ok
+  - name: PulteGroup
+    careers_url: https://pultegroup.wd1.myworkdayjobs.com/PGI
+    provider: workday
+    status: ok
+  - name: Land O'Lakes
+    careers_url: https://landolakes.wd1.myworkdayjobs.com/LandOLakes
+    provider: workday
+    status: ok
+  - name: Illinois Tool Works
+    careers_url: https://itw.wd5.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: Fluor
+    careers_url: https://fluor.eightfold.ai/careers?domain=fluor.com
+    provider: eightfold
+    status: ok
+  - name: Kyndryl
+    careers_url: https://kyndryl.wd5.myworkdayjobs.com/KyndrylProfessionalCareers
+    provider: workday
+    status: ok
+  - name: FirstEnergy
+    careers_url: https://fa-etjd-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/FirstEnergyCareers/jobs
+    provider: oraclecloud
+    status: ok
+  - name: BorgWarner
+    careers_url: https://borgwarner.wd5.myworkdayjobs.com/BorgWarner_Careers
+    provider: workday
+    status: ok
+  - name: BrightSpring Health Services
+    careers_url: https://careers-brightspring.icims.com/jobs/search
+    provider: icims
+    status: ok
+  - name: GXO Logistics
+    careers_url: https://jobs.gxo.com
+    provider: successfactors
+    max_jobs: 5000
+    status: ok
+  - name: Assurant
+    careers_url: https://assurant.wd1.myworkdayjobs.com/Assurant_Careers
+    provider: workday
+    status: ok
+  - name: Crown
+    careers_url: https://crownholdings.wd501.myworkdayjobs.com/CrownHoldings
+    provider: workday
+    status: ok
+  - name: Mosaic
+    careers_url: https://mosaic.wd5.myworkdayjobs.com/mosaic
+    provider: workday
+    status: ok
+  - name: Burlington Stores
+    careers_url: https://burlington.wd5.myworkdayjobs.com/BurlingtonCareers
+    provider: workday
+    status: ok
+  - name: lululemon
+    careers_url: https://careers.lululemon.com/en_US/careers/SearchJobs
+    provider: avature
+    status: ok
+  - name: Toll Brothers
+    careers_url: https://jobs-tollbrothers.icims.com/jobs/search
+    provider: icims
+    status: ok
+  - name: Accendra Health
+    careers_url: https://owensminor.wd1.myworkdayjobs.com/OMCareers
+    provider: workday
+    status: ok
+  - name: Vertiv
+    careers_url: https://egup.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Dow Jones
+    careers_url: https://dowjones.wd1.myworkdayjobs.com/Dow_Jones_Career
+    provider: workday
+    status: ok
+  - name: Celanese
+    careers_url: https://career-celanese.icims.com/jobs/search
+    provider: icims
+    status: ok
+  - name: Palo Alto Networks
+    careers_url: https://paloaltonetworks.wd5.myworkdayjobs.com/panwexternalcareers
+    provider: workday
+    status: ok
+  - name: Arista Networks
+    careers_url: https://jobs.smartrecruiters.com/AristaNetworks/
+    provider: smartrecruiters
+    status: ok
+  - name: Prologis
+    careers_url: https://prologis.wd5.myworkdayjobs.com/Prologis_External_Careers
+    provider: workday
+    status: ok
+  - name: EQT
+    careers_url: https://job-boards.greenhouse.io/eqtcorporation
+    provider: greenhouse
+    status: ok
+  - name: Ameren
+    careers_url: https://ameren.wd1.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: Dover
+    careers_url: https://dover.wd103.myworkdayjobs.com/dover
+    provider: workday
+    status: ok
+  - name: Continental Resources
+    careers_url: https://clr.wd5.myworkdayjobs.com/CLR_Careers
+    provider: workday
+    status: ok
+  - name: Somnigroup International
+    careers_url: https://tempurpedic.wd108.myworkdayjobs.com/Tempur-Sealy-Careers
+    provider: workday
+    status: ok
+  - name: TotalEnergies
+    careers_url: https://jobs.totalenergies.com/en_US/careers/SearchJobs?search=United%20States
+    provider: avature
+    status: ok
+  - name: Tencent
+    careers_url: https://tencent.wd1.myworkdayjobs.com/Tencent_Careers
+    provider: workday
+    status: ok
+  - name: Enel North America
+    careers_url: https://jobs.enel.com/en_US/careers/JobOpeningsUSA
+    provider: avature
+    status: ok
+  - name: Airbus
+    careers_url: https://ag.wd3.myworkdayjobs.com/Airbus
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: Protective Life
+    careers_url: https://jobs.lever.co/protective
+    provider: lever
+    status: ok
+  - name: Hitachi
+    careers_url: https://hitachi.wd1.myworkdayjobs.com/hitachi
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: Chubb
+    careers_url: https://fa-ewgu-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2001/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Panasonic
+    careers_url: https://careers.na.panasonic.com
+    api: https://careers.na.panasonic.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: The Standard
+    careers_url: https://standard.wd1.myworkdayjobs.com/Search
+    provider: workday
+    status: ok
+  - name: CIBC
+    careers_url: https://cibc.wd3.myworkdayjobs.com/search
+    provider: workday
+    facet: false
+    status: ok
+  - name: ABB
+    careers_url: https://abb.wd3.myworkdayjobs.com/External_Career_Page
+    provider: workday
+    max_pages: 1500
+    status: ok
+  - name: Daikin Applied
+    careers_url: https://daikinapplied.wd1.myworkdayjobs.com/Daikin-Careers
+    provider: workday
+    status: ok
+  - name: Keysight Technologies
+    careers_url: https://jobs.keysight.com
+    api: https://jobs.keysight.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: Navy Federal Credit Union
+    careers_url: https://fa-etbx-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/nfcu/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Aptiv
+    careers_url: https://aptiv.wd5.myworkdayjobs.com/APTIV_CAREERS
+    provider: workday
+    facet: false
+    status: ok
+  - name: Shure
+    careers_url: https://careers-shure.icims.com
+    provider: icims
+    status: ok
+  - name: Rivian
+    careers_url: https://careers.rivian.com
+    api: https://careers.rivian.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: Garmin
+    careers_url: https://careers.garmin.com
+    api: https://careers.garmin.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: GlobalFoundries
+    careers_url: https://globalfoundries.wd1.myworkdayjobs.com/External
+    provider: workday
+    status: ok
+  - name: onsemi
+    careers_url: https://hctz.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/jobs
+    provider: oraclecloud
+    facet: false
+    status: ok
+  - name: Electronic Arts
+    careers_url: https://jobs.ea.com/en_US/careers/SearchJobs
+    provider: avature
+    max_pages: 200
+    status: ok
+  - name: Susquehanna International Group (SIG)
+    careers_url: https://careers.sig.com
+    api: https://careers.sig.com/api/jobs
+    provider: jibeapply
+    status: ok
+  - name: Ciena
+    careers_url: https://ciena.wd5.myworkdayjobs.com/Careers
+    provider: workday
+    status: ok
+  - name: Zoox
+    careers_url: https://jobs.lever.co/zoox
+    status: ok
+  - name: Trimble
+    careers_url: https://trimble.wd1.myworkdayjobs.com/TrimbleCareers
+    provider: workday
+    status: ok
+  - name: ASML
+    careers_url: https://asml.wd3.myworkdayjobs.com/ASMLEXT1
+    provider: workday
+    status: ok
+  - name: NBCUniversal
+    careers_url: https://careers.smartrecruiters.com/NBCUniversal3
+    status: ok
+  - name: Copart
+    careers_url: https://copart.wd12.myworkdayjobs.com/Copart
+    provider: workday
+    status: ok
+  - name: Nokia
+    careers_url: https://fa-evmr-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Publicis Groupe
+    careers_url: https://careers.publicisgroupe.com
+    api: https://careers.publicisgroupe.com/api/jobs
+    provider: jibeapply
+    facet: false
+    status: ok
+  - name: Epic Games
+    careers_url: https://job-boards.greenhouse.io/epicgames
+    api: https://boards-api.greenhouse.io/v1/boards/epicgames/jobs
+    status: ok
+  - name: Cadence Design Systems
+    careers_url: https://cadence.wd1.myworkdayjobs.com/External_Careers
+    provider: workday
+    status: ok
+  - name: Highmark Health
+    careers_url: https://highmarkhealth.wd1.myworkdayjobs.com/highmark
+    provider: workday
+    status: ok
+  - name: Brevan Howard
+    careers_url: https://careers.brevanhoward.com/gb/en/search-results
+    provider: phenom
+    phenom:
+      urlPrefix: gb/en
+    status: ok
+  - name: GM Financial
+    careers_url: https://fa-exvu-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+    provider: oraclecloud
+    status: ok
+  - name: Bose
+    careers_url: https://careers.bose.com/us/en/search-results
+    provider: phenom
+    phenom:
+      urlPrefix: us/en
+    status: ok
+  - name: Cirrus Logic
+    careers_url: https://jobs.eu.lever.co/cirrus
+    status: ok
+  - name: Invesco
+    careers_url: https://invesco.wd1.myworkdayjobs.com/IVZ
+    provider: workday
+    status: ok
+  - name: Vanguard
+    careers_url: https://vanguard.wd5.myworkdayjobs.com/vanguard_external
+    provider: workday
+    status: ok
+  - name: Medpace
+    careers_url: https://careers.medpace.com
+    api: https://careers.medpace.com/api/jobs
+    provider: jibeapply
+    facet: false
+    status: ok
+  - name: ByteDance
+    careers_url: https://joinbytedance.com/search?keyword=intern
+    provider: browser-only
+    status: browser
+  - name: Citadel
+    careers_url: https://www.citadel.com/careers/open-opportunities/
+    provider: browser-only
+    status: browser
