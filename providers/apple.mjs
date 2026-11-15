@@ -389,7 +389,7 @@ function rawIdOf(r) {
 //                the end of the list);
 //   ceiling      max_pages ran out first;
 //   unverified   a page reported another total (rows were added or taken down while paging, so offsets shifted and a
-//                count cannot prove coverage; the stop is off from that page on), or a row had no id.
+//                count cannot prove coverage), or a row had no id; either turns the stop off from that page on.
 // A failed page request still throws: the list fails and nothing advances.
 /** @param {any} entry @param {any} ctx */
 async function fetchBoard(entry, ctx) {
@@ -419,9 +419,11 @@ async function fetchBoard(entry, ctx) {
       headers: { 'User-Agent': BROWSER_LIKE_USER_AGENT, Accept: 'text/html', 'Accept-Language': 'en-US,en;q=0.9' },
     }, RETRY_POLICY);
     const search = extractSearchData(html);
-    if (search.searchResults.length === 0) { end = 'empty'; break; }
+    // The first page's total is the target even when that page is empty (an empty page 1 of a board that reports
+    // rows is a failed read, not an empty board). Past the last row Apple serves empty pages with total 0.
     if (total === null) total = search.totalRecords;
-    else if (search.totalRecords !== total) totalChanged = true;
+    if (search.searchResults.length === 0) { end = 'empty'; break; }
+    if (search.totalRecords !== total) totalChanged = true;
     let freshIds = 0;
     for (const r of search.searchResults) {
       const id = rawIdOf(r);
@@ -436,7 +438,9 @@ async function fetchBoard(entry, ctx) {
       seen.add(j.id);
       all.push(j);
     }
-    if (totalChanged || search.sort !== DATE_SORT) stopOn = false;
+    // Off for the rest of the walk: a changed total (offsets shifted), a server that did not sort by date, or a row
+    // without an id (it can be neither known nor counted).
+    if (totalChanged || anonymous > 0 || search.sort !== DATE_SORT) stopOn = false;
     if (stopOn && stopper?.page(res.jobs)) { end = 'early'; break; }
     // After a total change, read on to the end: the most rows, never a claim of completeness.
     if (!totalChanged && rawIds.size >= total) { end = 'count'; break; }

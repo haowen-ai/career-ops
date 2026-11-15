@@ -286,3 +286,24 @@ test('without isKnownListing or a bound, or while probing, the walk never stops 
   assert.equal(probe.calls.length, 1);
   assert.ok(plain(probe));
 });
+
+test('an empty first page with a positive total is page_failed, never complete (Codex code review r1)', async () => {
+  const { value: jobs } = await quiet(() => ap.fetch(ENTRY, ctxOf([html([], 60)])));
+  assert.equal(jobs.length, 0);
+  assert.equal(statusOf(jobs), 'page_failed');
+  assert.ok(jobs.truncated);
+  const empty = await ap.fetch(ENTRY, ctxOf([html([], 0)]));
+  assert.equal(statusOf(empty), 'complete', 'a board that reports 0 and serves 0 is an empty board');
+});
+
+test('a row without an id turns the early stop off for the walk, on its own page or an earlier one (Codex code review r1)', async () => {
+  for (const at of [4, 1]) {
+    const pages = board(10);
+    const rows = pages.map((r) => r.map(row));
+    rows[at].splice(3, 0, { postingTitle: 'no id', postDateInGMT: iso(NOW - (20 * at + 3) * 3_600_000) });
+    const ctx = ctxOf(rows.map((r) => html(r, 200)), { known: allIds(pages) });
+    const { value: jobs } = await quiet(() => ap.fetch(ENTRY, ctx));
+    assert.equal(ctx.calls.length, 10, `no early stop (anonymous row on page ${at + 1})`);
+    assert.equal(statusOf(jobs), 'unverified');
+  }
+});
