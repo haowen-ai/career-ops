@@ -49,6 +49,7 @@
 
 import { decodeEntities } from './_html-entities.mjs';
 import { BROWSER_LIKE_USER_AGENT, fetchJsonWithRetry, sleep } from './_http.mjs';
+import { combineCollection, createEarlyStop, markCollection } from './_early-stop.mjs';
 
 // `oraclecloud(?:[1-9][0-9]?)?` = oraclecloud.com plus oraclecloud1.com …
 // oraclecloud99.com. No leading zero, at most two digits — a bounded family,
@@ -413,6 +414,9 @@ async function walkPages(entry, ctx, site, limits, query, firstJson) {
   let total = null;
   let ended = false;
   let serverCapped = false;
+  // One stopper per stream (query): see _early-stop.mjs. Never during a probe.
+  const stopper = Number.isFinite(limits.ctxCap) ? null : createEarlyStop(ctx);
+  let earlyStopped = false;
   for (let page = 0; page < maxPages; page++) {
     const offset = page * PAGE_SIZE;
     let json;
@@ -424,6 +428,7 @@ async function walkPages(entry, ctx, site, limits, query, firstJson) {
 
     const parsed = parseOracleResponse(json, site, entry.name);
     all.push(...parsed);
+    if (stopper?.page(parsed)) { ended = true; earlyStopped = true; break; }
 
     const item = Array.isArray(json?.items) ? json.items[0] : null;
     if (total === null && item && typeof item.TotalJobsCount === 'number') {
@@ -445,7 +450,10 @@ async function walkPages(entry, ctx, site, limits, query, firstJson) {
     } else if (listLen < PAGE_SIZE) { ended = true; break; }
   }
   const pageCapped = !ended && entryMaxPages < limits.ctxCap;
-  return { jobs: all, total, capped: serverCapped || pageCapped, reason: serverCapped ? 'source-cap' : 'page-cap', maxPages };
+  const capped = serverCapped || pageCapped;
+  // A page that fails throws out of here (fetchPage), failing the whole list: no status to advance on.
+  const status = capped ? 'ceiling' : earlyStopped ? 'early_stopped' : 'complete';
+  return { jobs: all, total, capped, reason: serverCapped ? 'source-cap' : 'page-cap', maxPages, status };
 }
 
 async function fetchPage(ctx, site, offset, query, delay) {
@@ -518,6 +526,7 @@ export default {
         /** @type {any} */ (all).oraclecloudTruncated = true;
         /** @type {any} */ (all).truncated = { reason: res.reason, fetched: all.length, ...(res.total === null ? {} : { total: res.total }) };
       }
+      markCollection(all, res.status);
       return all;
     };
 
@@ -577,6 +586,7 @@ export default {
             facet: { name: facet.name, values: facet.values },
           };
           if (res.capped) fjobs.truncated = true;
+          markCollection(fjobs, res.status);
           return fjobs;
         }
       }
@@ -587,16 +597,19 @@ export default {
     const perTerm = {};
     let truncated = false;
     let requested = first !== undefined; // page 0 already fetched → space the next request
+    const statuses = [];
     for (const term of terms) {
       if (requested) await sleep(INTER_PAGE_DELAY_MS, ctx);
       const res = await walkPages(entry, ctx, site, limits, term);
       requested = true;
       perTerm[term] = res.jobs.length;
       if (res.capped) truncated = true;
+      statuses.push(res.status);
       merge(jobs, seen, res.jobs);
     }
     jobs.keywordSearch = { mode: 'keywords', terms: terms.length, boardTotal, perTerm };
     if (truncated) jobs.truncated = true;
+    markCollection(jobs, combineCollection(statuses), terms.map((term, i) => ({ key: term, status: statuses[i] })));
     return jobs;
   },
 };

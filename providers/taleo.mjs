@@ -2,6 +2,7 @@
 /** @typedef {import('./_types.js').Provider} Provider */
 
 import { fetchJsonWithRetry, fetchTextWithRetry, sleep } from './_http.mjs';
+import { createEarlyStop, markCollection } from './_early-stop.mjs';
 import { decodeEntities } from './_html-entities.mjs';
 import { htmlToText } from './_html-to-text.mjs';
 
@@ -340,6 +341,9 @@ export default {
     const seen = new Set();
     let total = parsed.total;
     let stopReason = 'end';
+    // Newest first (sortBySelectionParam 3, descending): a caller with known listings and a watermark may stop at a
+    // fully known page older than it (_early-stop.mjs). Never during a probe.
+    const stopper = probing ? null : createEarlyStop(ctx);
     for (let page = 1; page <= pagesToFetch; page++) {
       if (page > 1) {
         await sleep(INTER_PAGE_DELAY_MS, ctx);
@@ -348,6 +352,8 @@ export default {
         } catch (err) {
           if (probing) throw err; // unwrapped: probe budget identity must survive
           console.error(`⚠️  taleo: ${entry.name} page ${page} failed (${err?.message}) — keeping ${jobs.length} postings`);
+          // Reported, not swallowed: the rows read so far are kept, but the list is partial (page_failed), so a
+          // caller neither treats it as a complete census nor advances a watermark on it.
           stopReason = 'error';
           break;
         }
@@ -355,6 +361,7 @@ export default {
       }
       if (parsed.rawCount === 0) break;
       let fresh = 0;
+      const pageJobs = [];
       for (const row of parsed.rows) {
         if (seen.has(row.id)) continue;
         seen.add(row.id);
@@ -362,8 +369,10 @@ export default {
         const job = { title: row.title, url: row.url, company: entry.name, location: row.location };
         if (typeof row.postedAt === 'number') job.postedAt = row.postedAt;
         jobs.push(job);
+        pageJobs.push(job);
       }
       if (fresh === 0) break;
+      if (stopper?.page(pageJobs)) { stopReason = 'early_stopped'; break; }
       if (total !== null && page * PAGE_SIZE >= total) break;
       if (page === pagesToFetch) stopReason = probing ? 'probe' : 'max_pages';
     }
@@ -372,6 +381,10 @@ export default {
       console.error(`⚠️  taleo: ${entry.name} truncated at ${jobs.length} of ${total} postings — raise max_pages on this entry for more`);
       /** @type {any} */ (jobs).truncated = { reason: 'page-cap', fetched: jobs.length, total };
     }
+    if (stopReason === 'error') /** @type {any} */ (jobs).truncated = { reason: 'page-failed', fetched: jobs.length, ...(total !== null ? { total } : {}) };
+    markCollection(jobs, stopReason === 'error' ? 'page_failed'
+      : stopReason === 'early_stopped' ? 'early_stopped'
+      : stopReason === 'max_pages' && (total === null || jobs.length < total) ? 'ceiling' : 'complete');
 
     // Health probes are deliberately list-only. Normal scans enrich a bounded
     // prefix so a very large board cannot trigger an unbounded request fanout.
