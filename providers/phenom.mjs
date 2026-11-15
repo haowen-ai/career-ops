@@ -1,7 +1,8 @@
 // @ts-check
 /** @typedef {import('./_types.js').Provider} Provider */
 
-import { fetchJsonWithRetry, sleep } from './_http.mjs';
+import { fetchJsonWithRetry, fetchResponseWithRetry, sleep } from './_http.mjs';
+import { markCollection } from './_early-stop.mjs';
 // Titles arrive HTML-escaped, so the tag strip below is not enough on its own:
 // an undecoded "R&amp;D Engineer" fails the user's own title_filter positive
 // "r&d" and is silently dropped, and a negative like "sales & marketing" never
@@ -124,8 +125,10 @@ export function jobLocation(job) {
 }
 
 /**
- * Map one refineSearch response to {total, rows}. A record without a jobId or a
- * title is skipped (no stable dedup key / no meaningful listing).
+ * Map one refineSearch response to {total, rows, rawIds, anonymous, dropped}. A record without a jobId or a title is
+ * skipped (no stable dedup key / no meaningful listing). rawIds lists every record's own jobId (kept or skipped), in
+ * order; anonymous counts records without one; dropped lists the jobIds of records that had one but were skipped.
+ * Completeness is counted on these, not on the kept rows (plan 2026-11-14 v7b r2).
  * @param {any} json @param {{origin:string, urlPrefix:string}} cfg
  */
 export function parseRefineSearch(json, cfg) {
@@ -133,15 +136,19 @@ export function parseRefineSearch(json, cfg) {
   const total = typeof rs?.totalHits === 'number' ? rs.totalHits : null;
   const list = Array.isArray(rs?.data?.jobs) ? rs.data.jobs : [];
   const rows = [];
+  /** @type {string[]} */ const rawIds = [];
+  /** @type {string[]} */ const dropped = [];
+  let anonymous = 0;
   for (const job of list) {
-    if (!job || typeof job !== 'object') continue;
-    const id = job.jobId != null ? String(job.jobId) : '';
+    const id = job && typeof job === 'object' && job.jobId != null ? String(job.jobId) : '';
+    if (!id) { anonymous++; continue; }
+    rawIds.push(id);
     const title = decodeEntities(String(job.title || '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
-    if (!id || !title) continue;
+    if (!title) { dropped.push(id); continue; }
     // A lone surrogate in id throws URIError out of encodeURIComponent and
     // aborts this loop; id is also the dedup key. Drop just this one.
     const encodedId = safeEncodeURIComponent(id);
-    if (encodedId === null) continue;
+    if (encodedId === null) { dropped.push(id); continue; }
     rows.push({
       id,
       title,
@@ -150,7 +157,28 @@ export function parseRefineSearch(json, cfg) {
       postedAt: parsePhenomDate(job.postedDate || job.dateCreated),
     });
   }
-  return { total, rows };
+  return { total, rows, rawIds, anonymous, dropped };
+}
+
+/**
+ * Cookie jar for one walk: a Set-Cookie list updates it (name=value only; a repeated name takes its last value), and
+ * header() is the Cookie request header, '' when empty.
+ */
+export function createCookieJar() {
+  const jar = new Map();
+  return {
+    /** @param {unknown} setCookies */
+    update(setCookies) {
+      for (const raw of Array.isArray(setCookies) ? setCookies : []) {
+        if (typeof raw !== 'string') continue;
+        const pair = raw.split(';', 1)[0].trim();
+        const eq = pair.indexOf('=');
+        if (eq <= 0) continue;
+        jar.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
+      }
+    },
+    header() { return [...jar].map(([name, value]) => `${name}=${value}`).join('; '); },
+  };
 }
 
 /** Resolve the page cap: a positive integer `max_pages` on the entry, capped. */
@@ -158,6 +186,40 @@ export function resolveMaxPages(entry) {
   const v = entry?.max_pages;
   if (Number.isInteger(v) && v > 0) return Math.min(v, MAX_PAGES_CAP);
   return DEFAULT_MAX_PAGES;
+}
+
+// One walk is one session (plan 2026-11-14 v7b). Live 2026-11-15 on Allianz, DHL and Franklin Templeton: a /widgets
+// request without a session cookie lands on one of two orderings of the same rows, at random per request, so paging
+// by `from` read some rows twice and others never (Allianz 1468 of 1704, DHL 7157 of 8291, Franklin Templeton 237 of
+// 260), and the old stop rule (`from` past totalHits) still called the board complete. The first response's
+// Set-Cookie (PLAY_SESSION, PHPPPE_ACT) keeps every later page on the ordering that served it: 1704, 8291 and 260
+// distinct jobIds, no repeats. An embedder without ctx.fetchResponse falls back to fetchJson with no cookie; the
+// status below is computed the same way, so a short read there is reported, not hidden.
+//
+// jobs.collection.status is one of:
+//   complete     every page reported the first page's totalHits, the distinct raw jobIds reached it, every row had a
+//                jobId and the parser kept every row that had one;
+//   page_failed  an empty page, a page of jobIds already read, the offsets ran past totalHits short of it, or a later
+//                page's request failed after its retries (the rows already read are kept);
+//   ceiling      max_pages (or ctx.maxPages) ran out first;
+//   unverified   a page reported another totalHits (rows were added or taken down while paging, so a count cannot
+//                prove coverage; the walk reads on to an empty page or the offsets' end), a row had no jobId, or a row
+//                with a jobId was dropped by the parser (no title, or an id that cannot be put in a URL), or the first
+//                page reported no totalHits at all (nothing to count against; the walk reads to an empty page).
+// A first page that fails still throws: the list fails and nothing advances.
+
+/** @param {any} ctx @param {string} url @param {any} opts @param {ReturnType<typeof createCookieJar>} jar */
+async function postPage(ctx, url, opts, jar) {
+  if (typeof ctx?.fetchResponse !== 'function') return fetchJsonWithRetry(ctx, url, opts);
+  const cookie = jar.header();
+  const res = await fetchResponseWithRetry(ctx, url, { ...opts, headers: { ...opts.headers, ...(cookie ? { cookie } : {}) } });
+  jar.update(typeof res?.headers?.getSetCookie === 'function' ? res.headers.getSetCookie() : []);
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`phenom: ${url} did not answer JSON (HTTP ${res?.status})`);
+  }
 }
 
 /** @type {Provider} */
@@ -172,29 +234,30 @@ export default {
     // Honor a context page cap — verify-portals' liveness probe sets
     // `ctx.maxPages: 1` so it only needs to know a board is live, not its
     // full count (mirrors providers/workday.mjs). Kept separate from
-    // maxPages so the entry-cap warning below (page === maxPages) doesn't
-    // misfire when it was really the probe's cap that stopped pagination.
-    // No effect on real scans, which don't set ctx.maxPages.
+    // maxPages so the entry-cap warning below doesn't misfire when it was
+    // really the probe's cap that stopped pagination.
     const ctxCap = Number.isInteger(ctx?.maxPages) && ctx.maxPages > 0 ? ctx.maxPages : Infinity;
     const pagesToFetch = Math.min(maxPages, ctxCap);
+    const jar = createCookieJar();
     const jobs = [];
     const seen = new Set();
+    const rawIds = new Set();
+    const droppedIds = new Set();
+    let anonymous = 0;
+    /** @type {number|null} */
     let total = null;
-
-    // Why pagination stopped — drives the truncation warning below. Only a
-    // 'cap' stop is worth surfacing: 'complete' means the widget ran out of
-    // fresh rows on its own, and a fetch failure already keeps whatever was
-    // collected without needing a second warning.
-    let stopReason = 'complete';
+    let lastTotal = null;
+    let totalChanged = false;
+    /** @type {null | 'count' | 'empty' | 'repeated' | 'offsets' | 'fetch-error'} */
+    let end = null;
     let page = 0;
-    let anyPageSucceeded = false;
     for (; page < pagesToFetch; page++) {
       if (page > 0) await sleep(PAGE_DELAY_MS, ctx);
       let json;
       try {
         // Retries transient failures (429/5xx/timeout) with backoff before
         // giving up on the page.
-        json = await fetchJsonWithRetry(ctx, cfg.widgetsApi, {
+        json = await postPage(ctx, cfg.widgetsApi, {
           method: 'POST',
           redirect: 'error',
           headers: { 'content-type': 'application/json', accept: 'application/json' },
@@ -221,56 +284,69 @@ export default {
             selected_fields: cfg.selectedFields,
             locationData: {},
           }),
-        });
+        }, jar);
       } catch (err) {
-        // Reached only once fetchJsonWithRetry's retries are exhausted, or
-        // immediately for a non-retryable error (e.g. a 4xx). Keep jobs
-        // collected so far — a page failure doesn't discard earlier pages —
-        // and log it, so a rate-limit/WAF block on page N is distinguishable
-        // from a tenant that genuinely only has N*PAGE_SIZE postings.
-        // If not even the first page ever succeeded, this tenant is
-        // completely broken (wrong endpoint, dead board, hard-blocked) — a
-        // silent empty result would look identical to "zero postings" to
-        // callers. Rethrow so it surfaces as a failure instead (mirrors
-        // providers/workday.mjs, which never wraps its first-page fetch in
-        // try/catch for the same reason).
-        if (!anyPageSucceeded) throw err;
+        // A first page that never succeeded means a broken tenant (wrong
+        // endpoint, dead board, hard-blocked): rethrow so it is a failure, not
+        // "zero postings". A later page keeps the rows already read and the
+        // list is page_failed.
+        if (page === 0) throw err;
         const jobsSummary = `${jobs.length}${total !== null ? ` of ${total}` : ''} jobs`;
         console.error(`⚠️  phenom: ${entry.name} truncated at page ${page + 1} of ${maxPages} (${jobsSummary}): ${err.message}`);
-        stopReason = 'fetch-error';
+        end = 'fetch-error';
         break;
       }
-      anyPageSucceeded = true;
-      const { total: pageTotal, rows } = parseRefineSearch(json, cfg);
-      if (total === null) total = pageTotal;
-      if (rows.length === 0) break;
-
-      let fresh = 0;
-      for (const row of rows) {
+      const parsed = parseRefineSearch(json, cfg);
+      // The first page's total is the target even when that page is empty: an empty page 1 of a board that reports
+      // rows is a failed read, not an empty board.
+      if (page === 0) total = parsed.total;
+      else if (parsed.total !== total && parsed.rawIds.length + parsed.anonymous > 0) totalChanged = true;
+      if (parsed.total !== null) lastTotal = parsed.total;
+      if (parsed.rawIds.length + parsed.anonymous === 0) { end = 'empty'; break; }
+      anonymous += parsed.anonymous;
+      let freshIds = 0;
+      for (const id of parsed.rawIds) if (!rawIds.has(id)) { rawIds.add(id); freshIds++; }
+      for (const id of parsed.dropped) droppedIds.add(id);
+      if (page > 0 && freshIds === 0 && parsed.anonymous === 0) { end = 'repeated'; break; }
+      for (const row of parsed.rows) {
         if (seen.has(row.id)) continue;
         seen.add(row.id);
-        fresh++;
         const job = { title: row.title, url: row.url, company: entry.name, location: row.location };
         if (typeof row.postedAt === 'number') job.postedAt = row.postedAt;
         jobs.push(job);
       }
-      if (fresh === 0) break; // server ignored `from` (or we've looped)
-      if (total !== null && (page + 1) * PAGE_SIZE >= total) break;
+      if (!totalChanged && total !== null && rawIds.size >= total) { end = 'count'; break; }
+      // Past the last offset the board reports, further pages can only be empty.
+      if (lastTotal !== null && (page + 1) * PAGE_SIZE >= lastTotal) { end = 'offsets'; break; }
     }
-    if (stopReason === 'complete' && page === maxPages) stopReason = 'cap';
 
+    const short = total === null || rawIds.size < total;
+    /** @type {'complete'|'page_failed'|'ceiling'|'unverified'} */
+    let status;
+    if (end === 'fetch-error') status = 'page_failed';
+    else if (end === null && short) status = 'ceiling';
+    else if (total === null || totalChanged || anonymous > 0 || droppedIds.size > 0) status = 'unverified';
+    else if (short) status = 'page_failed';
+    else status = 'complete';
+
+    if (droppedIds.size > 0) console.error(`⚠️  phenom: ${entry.name} dropped ${droppedIds.size} row(s) with a jobId but no usable title or id`);
+    if (anonymous > 0) console.error(`⚠️  phenom: ${entry.name} skipped ${anonymous} row(s) without a jobId`);
+    if (totalChanged) console.error(`⚠️  phenom: ${entry.name} totalHits changed while paging (${total} → ${lastTotal}); ${rawIds.size} distinct jobIds read`);
     // The cap is a safety net, not a working limit — silent by design, but a
     // tenant that actually hits it needs to be surfaced (mirrors
-    // providers/workday.mjs's identical "raise max_pages" warning).
-    if (stopReason === 'cap') {
-      const jobsSummary = `${jobs.length}${total !== null ? ` of ${total}` : ''} jobs`;
-      console.error(`⚠️  phenom: ${entry.name} truncated at max_pages=${maxPages} (${jobsSummary}) — raise max_pages on this entry for more`);
+    // providers/workday.mjs's identical "raise max_pages" warning). A
+    // ctx.maxPages (probe) stop is not the entry cap and gets no advice.
+    if (status === 'ceiling' && page === maxPages) {
+      console.error(`⚠️  phenom: ${entry.name} truncated at max_pages=${maxPages} (${jobs.length}${total !== null ? ` of ${total}` : ''} jobs) — raise max_pages on this entry for more`);
     }
-
+    if (status === 'page_failed' && end !== 'fetch-error') {
+      console.error(`⚠️  phenom: ${entry.name} short read (${end}): ${rawIds.size} of ${total} distinct jobIds`);
+      /** @type {any} */ (jobs).truncated = { reason: 'source-reports-more', fetched: jobs.length, total };
+    }
     // A page cap or a failed page leaves the board partial; tag it (the workdayTruncated convention)
     // so a caller can tell without reading stderr.
-    if (stopReason === 'cap' || stopReason === 'fetch-error') /** @type {any} */ (jobs).phenomTruncated = true;
+    if ((status === 'ceiling' && page === maxPages) || end === 'fetch-error') /** @type {any} */ (jobs).phenomTruncated = true;
 
-    return jobs;
+    return markCollection(jobs, status);
   },
 };

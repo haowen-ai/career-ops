@@ -67,7 +67,8 @@ try {
 
   // fetch — paginates by from/size until totalHits, dedups, sends the facet.
   const mkJob = (id) => ({ jobId: String(id), title: `Job ${id}`, location: 'Germany', postedDate: '2026-05-07T18:25:30.000+0000' });
-  const phPage = (ids) => ({ refineSearch: { status: 200, totalHits: 150, data: { jobs: ids.map(mkJob) } } });
+  // 102 distinct jobIds over two pages (id 100 repeats), and totalHits says so.
+  const phPage = (ids) => ({ refineSearch: { status: 200, totalHits: 102, data: { jobs: ids.map(mkJob) } } });
   const phPages = [phPage(Array.from({ length: 100 }, (_, i) => i + 1)), phPage([100, 101, 102])];
   let phCalls = 0;
   let phSawFacet = null;
@@ -102,7 +103,7 @@ try {
   } else {
     fail(`phenom fetch-error stop should not also warn about max_pages: ${JSON.stringify(partialWarnings)}`);
   }
-  if (partialWarnings.some(w => /truncated at page 2 of \d+ \(100 of 150 jobs\): network blip on page 2/.test(w))) {
+  if (partialWarnings.some(w => /truncated at page 2 of \d+ \(100 of 102 jobs\): network blip on page 2/.test(w))) {
     pass('phenom.fetch() warns (console.error) when a page fetch fails mid-pagination, instead of failing silently');
   } else {
     fail(`phenom fetch-error stop should log a truncation warning: ${JSON.stringify(partialWarnings)}`);
