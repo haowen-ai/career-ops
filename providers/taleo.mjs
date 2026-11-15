@@ -371,7 +371,12 @@ export default {
         jobs.push(job);
         pageJobs.push(job);
       }
-      if (fresh === 0) break;
+      if (fresh === 0) {
+        // A page that repeats earlier rows is not proof the list ended (Codex review 11/15): short of a known total it
+        // is a failed read; with no total it is unverified. Neither may advance a watermark.
+        if (page > 1) stopReason = total !== null && jobs.length < total ? 'repeated' : 'repeated_unverified';
+        break;
+      }
       if (stopper?.page(pageJobs)) { stopReason = 'early_stopped'; break; }
       if (total !== null && page * PAGE_SIZE >= total) break;
       if (page === pagesToFetch) stopReason = probing ? 'probe' : 'max_pages';
@@ -382,7 +387,9 @@ export default {
       /** @type {any} */ (jobs).truncated = { reason: 'page-cap', fetched: jobs.length, total };
     }
     if (stopReason === 'error') /** @type {any} */ (jobs).truncated = { reason: 'page-failed', fetched: jobs.length, ...(total !== null ? { total } : {}) };
-    markCollection(jobs, stopReason === 'error' ? 'page_failed'
+    if (stopReason === 'repeated') /** @type {any} */ (jobs).truncated = { reason: 'repeated-page', fetched: jobs.length, total };
+    markCollection(jobs, stopReason === 'error' || stopReason === 'repeated' ? 'page_failed'
+      : stopReason === 'repeated_unverified' ? 'unverified'
       : stopReason === 'early_stopped' ? 'early_stopped'
       : stopReason === 'max_pages' && (total === null || jobs.length < total) ? 'ceiling' : 'complete');
 

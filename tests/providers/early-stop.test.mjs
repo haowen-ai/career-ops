@@ -166,3 +166,18 @@ test('Taleo without a watermark reads to the end and reports complete', async ()
   assert.deepEqual(asked, [1, 2, 3]);
   assert.equal(jobs.collection.status, 'complete');
 });
+
+test('Taleo: a repeated page before the known total is page_failed, never complete (Codex review 11/15)', async () => {
+  // The API hands back page 1 again for page 2: only 1 of 75 postings read. Advancing a watermark here would hide the rest.
+  const { ctx } = tCtx([tPage([[1, 1]]), tPage([[1, 1]])]);
+  const jobs = await taleo.fetch(T_ENTRY, ctx);
+  assert.equal(jobs.collection.status, 'page_failed');
+  assert.equal(jobs.truncated?.reason, 'repeated-page');
+});
+
+test('Taleo: a repeated page with an unknown total is not complete either', async () => {
+  const { ctx } = tCtx([tPage([[1, 1]], null), tPage([[1, 1]], null)]);
+  const jobs = await taleo.fetch(T_ENTRY, ctx);
+  assert.notEqual(jobs.collection.status, 'complete');
+  assert.notEqual(jobs.collection.status, 'early_stopped');
+});
