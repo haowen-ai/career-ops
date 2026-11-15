@@ -215,3 +215,30 @@ test('a first page whose request fails still throws (the list fails, nothing adv
 test('a first page that is not JSON throws', async () => {
   await assert.rejects(phenom.fetch(ENTRY, { sleep: async () => {}, fetchResponse: async () => ({ status: 200, headers: { getSetCookie: () => [] }, text: async () => '<html>blocked</html>' }) }));
 });
+
+test('an HTTP-200 page that is not JSON is retried with the same session, and the walk completes', async () => {
+  const seen = [];
+  let n = 0;
+  const jobs = await phenom.fetch(ENTRY, { sleep: async () => {}, fetchResponse: async (url, opts) => {
+    n++;
+    seen.push({ from: JSON.parse(opts.body).from, cookie: opts.headers?.cookie ?? null });
+    if (n === 1) return response(body(ids(1, 100).map((id) => job(id)), 150), ['PLAY_SESSION=sA; Path=/']);
+    if (n === 2) return { status: 200, headers: { getSetCookie: () => [] }, text: async () => '<html>busy</html>' };
+    return response(body(ids(101, 50).map((id) => job(id)), 150));
+  } });
+  assert.deepEqual(seen, [{ from: 0, cookie: null }, { from: 100, cookie: 'PLAY_SESSION=sA' }, { from: 100, cookie: 'PLAY_SESSION=sA' }]);
+  assert.equal(jobs.length, 150);
+  assert.equal(jobs.collection.status, 'complete');
+});
+
+test('a page of known jobIds that newly carries a title for one dropped earlier keeps it and reads on', async () => {
+  const first = [...ids(1, 99).map((id) => job(id)), job(100, '')];
+  const again = [...ids(1, 99).map((id) => job(id)), job(100)];
+  const ctx = served([[first, 300], [again, 300], [ids(101, 100).map((id) => job(id)), 300]]);
+  const { result: jobs } = await quiet(() => phenom.fetch(ENTRY, ctx));
+  assert.equal(ctx.calls(), 3);
+  assert.equal(jobs.length, 200);
+  assert.ok(jobs.some((j) => /\/job\/100\//.test(j.url)));
+  // 200 distinct jobIds of 300 when the offsets run out: short, so page_failed (jobId 100 no longer counts as dropped).
+  assert.equal(jobs.collection.status, 'page_failed');
+});

@@ -208,18 +208,26 @@ export function resolveMaxPages(entry) {
 //                page reported no totalHits at all (nothing to count against; the walk reads to an empty page).
 // A first page that fails still throws: the list fails and nothing advances.
 
+// One page request, retried as a whole: fetch, cookie update and JSON parse are one attempt, so an HTTP-200 body that
+// is not JSON is retried like fetchJsonWithRetry retries it (a parse error carries no status, so it is retryable).
 /** @param {any} ctx @param {string} url @param {any} opts @param {ReturnType<typeof createCookieJar>} jar */
 async function postPage(ctx, url, opts, jar) {
   if (typeof ctx?.fetchResponse !== 'function') return fetchJsonWithRetry(ctx, url, opts);
-  const cookie = jar.header();
-  const res = await fetchResponseWithRetry(ctx, url, { ...opts, headers: { ...opts.headers, ...(cookie ? { cookie } : {}) } });
-  jar.update(typeof res?.headers?.getSetCookie === 'function' ? res.headers.getSetCookie() : []);
-  const text = await res.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error(`phenom: ${url} did not answer JSON (HTTP ${res?.status})`);
-  }
+  const attempt = {
+    sleep: ctx.sleep,
+    fetchResponse: async () => {
+      const cookie = jar.header();
+      const res = await ctx.fetchResponse(url, { ...opts, headers: { ...opts.headers, ...(cookie ? { cookie } : {}) } });
+      jar.update(typeof res?.headers?.getSetCookie === 'function' ? res.headers.getSetCookie() : []);
+      const text = String(await res.text()).replace(/^\uFEFF/, '');
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw new Error(`phenom: ${url} did not answer JSON (HTTP ${res?.status})`);
+      }
+    },
+  };
+  return fetchResponseWithRetry(attempt, url, opts);
 }
 
 /** @type {Provider} */
@@ -307,19 +315,25 @@ export default {
       let freshIds = 0;
       for (const id of parsed.rawIds) if (!rawIds.has(id)) { rawIds.add(id); freshIds++; }
       for (const id of parsed.dropped) droppedIds.add(id);
-      if (page > 0 && freshIds === 0 && parsed.anonymous === 0) { end = 'repeated'; break; }
+      // Rows are kept before any stop below, so a page never takes away a listing it carries (a jobId dropped on an
+      // earlier page for having no title is returned when a later page carries it with one).
+      let freshRows = 0;
       for (const row of parsed.rows) {
         if (seen.has(row.id)) continue;
         seen.add(row.id);
+        freshRows++;
         const job = { title: row.title, url: row.url, company: entry.name, location: row.location };
         if (typeof row.postedAt === 'number') job.postedAt = row.postedAt;
         jobs.push(job);
       }
+      if (page > 0 && freshIds === 0 && freshRows === 0 && parsed.anonymous === 0) { end = 'repeated'; break; }
       if (!totalChanged && total !== null && rawIds.size >= total) { end = 'count'; break; }
       // Past the last offset the board reports, further pages can only be empty.
       if (lastTotal !== null && (page + 1) * PAGE_SIZE >= lastTotal) { end = 'offsets'; break; }
     }
 
+    // A jobId the parser dropped on one page but returned from another is not missing.
+    for (const id of seen) droppedIds.delete(id);
     const short = total === null || rawIds.size < total;
     /** @type {'complete'|'page_failed'|'ceiling'|'unverified'} */
     let status;
