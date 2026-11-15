@@ -108,7 +108,7 @@ test('total > keyword_min_total → one paginated query per term, merged + dedup
   // Delay before every non-first page and between terms.
   assert.ok(sleeps.length >= 4 && sleeps.every((ms) => ms > 0));
   // Same job object shape as the full path.
-  assert.deepEqual(Object.keys(jobs[0]).sort(), ['company', 'location', 'postedAt', 'requisitionId', 'title', 'url']);
+  assert.deepEqual(Object.keys(jobs[0]).sort(), ['company', 'listingId', 'location', 'postedAt', 'requisitionId', 'title', 'url']);
 });
 
 test('dedup across terms falls back to URL when the URL carries no requisition id', async () => {

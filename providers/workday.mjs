@@ -605,6 +605,22 @@ function reqTokenFromPath(externalPath) {
   return validReqToken(externalPath.split('/').filter(Boolean).pop() || '') || undefined;
 }
 
+// The posting's own token: the same anchored trailing segment, but WITH Workday's
+// "-N" repost suffix, because a cross-site repost is a different listing. Used as
+// `listingId`, the per-listing key an incremental caller (career-journal) uses to
+// recognise a listing it has already processed: the same posting found by two
+// keyword searches of one tenant has the same URL and so the same token. Same
+// shape check as validReqToken, so a title word is never a key.
+function postingTokenFromPath(externalPath) {
+  if (typeof externalPath !== 'string') return undefined;
+  const segment = externalPath.split('/').filter(Boolean).pop() || '';
+  const underscoreIdx = segment.indexOf('_');
+  if (underscoreIdx === -1) return undefined;
+  const token = segment.slice(underscoreIdx + 1);
+  if (token.length < 3 || !REQ_TOKEN_CHARS_RE.test(token) || !REQ_SHAPE_RE.test(token)) return undefined;
+  return token;
+}
+
 // bulletFields is deliberately NOT consulted. It is tenant-configurable free text
 // (location, job family, req number, …) with no guaranteed slot, so it cannot
 // identify a req on its own — and as corroboration it added nothing the anchored
@@ -937,6 +953,9 @@ export function parseWorkdayResponse(json, entry) {
       // (the "-1"/"-2" suffix stripped above), so it cannot be the per-posting key
       // externalId promises (CodeRabbit, #4297).
       requisitionId: reqFromWorkday(j),
+      // Per-listing key for incremental callers (see postingTokenFromPath). Not
+      // externalId: that field promises a posting id from the ATS API.
+      ...(postingTokenFromPath(j.externalPath) ? { listingId: postingTokenFromPath(j.externalPath) } : {}),
       location: withFullyRemote(j.locationsText || locationFromPath(j.externalPath), j.remoteType),
       postedAt: parsePostedOn(j.postedOn),
     });
@@ -1467,9 +1486,15 @@ export default {
         // title_filter as ctx.titleWanted) gets no detail GET spent on them: on a
         // large tenant most placeholders belong to titles the scan discards.
         const titleWanted = typeof ctx.titleWanted === 'function' ? ctx.titleWanted : null;
+        // An incremental caller (career-journal) passes ctx.isKnownListing: a
+        // listing it already processed gets no detail GET. It is still returned,
+        // as listed, so the caller's list count stays whole.
+        const isKnown = typeof ctx.isKnownListing === 'function' ? ctx.isKnownListing : null;
         const allPlaceholders = jobs.filter((j) => isMultiLocationPlaceholder(j.location));
-        const placeholders = titleWanted ? allPlaceholders.filter((j) => titleWanted(j.title)) : allPlaceholders;
-        const skippedByTitle = allPlaceholders.length - placeholders.length;
+        const unknownPlaceholders = isKnown ? allPlaceholders.filter((j) => !isKnown(j)) : allPlaceholders;
+        const skippedKnown = allPlaceholders.length - unknownPlaceholders.length;
+        const placeholders = titleWanted ? unknownPlaceholders.filter((j) => titleWanted(j.title)) : unknownPlaceholders;
+        const skippedByTitle = unknownPlaceholders.length - placeholders.length;
         // The detail document lives at the same externalPath under the CXS host.
         // `job.url` is `jobBase + externalPath` (parseWorkdayResponse), so the
         // path is recovered by removing the prefix rather than by re-parsing a
@@ -1555,7 +1580,8 @@ export default {
           // them into one number would hide that.
           const dated = redated > 0 ? `, ${redated} dated exactly from the detail document` : '';
           const notWanted = skippedByTitle > 0 ? `, ${skippedByTitle} skipped by the title filter` : '';
-          console.error(`ℹ️  workday: ${entry.name} resolved ${resolved} of ${placeholders.length} multi-location placeholder(s)${unreadable}${unroutable}${capped}${dated}${notWanted}`);
+          const known = skippedKnown > 0 ? `, ${skippedKnown} already known to the caller` : '';
+          console.error(`ℹ️  workday: ${entry.name} resolved ${resolved} of ${placeholders.length} multi-location placeholder(s)${unreadable}${unroutable}${capped}${dated}${notWanted}${known}`);
         }
       }
     }
