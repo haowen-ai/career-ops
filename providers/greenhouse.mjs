@@ -38,6 +38,42 @@ function parseDetailConfig(entry) {
   };
 }
 
+/**
+ * The plain list with bodies fetched for the postings the caller does not know
+ * yet, or null when this read does not apply (no ctx.isKnownListing, a probe, no
+ * board slug, or more new postings than detailLimit). Known postings are returned
+ * without a body: the caller skips them.
+ * @param {any} entry @param {any} ctx @param {string} apiUrl
+ */
+async function readNewBodiesOnly(entry, ctx, apiUrl) {
+  const isKnown = typeof ctx?.isKnownListing === 'function' ? ctx.isKnownListing : null;
+  const probing = Number.isInteger(ctx?.maxPages) && ctx.maxPages > 0;
+  const boardSlug = new URL(apiUrl).pathname.match(/^\/v1\/boards\/([^/]+)\/jobs\/?$/)?.[1] || '';
+  if (!isKnown || probing || !boardSlug) return null;
+  const bare = new URL(apiUrl);
+  bare.searchParams.delete('content');
+  const json = /** @type {any} */ (await ctx.fetchJson(assertGreenhouseUrl(bare.href), { redirect: 'error' }));
+  const jobs = boardJobs(json, entry).filter(/** @param {any} j */ j => j.absolute_url && j.id != null);
+  const fresh = jobs.filter(/** @param {any} j */ j => !isKnown({ listingIdentity: { ats_provider: 'greenhouse', board_slug: boardSlug, posting_id: String(j.id) }, externalId: coerceId(j.id), url: j.absolute_url }));
+  const { detailLimit } = parseDetailConfig(entry);
+  if (fresh.length > detailLimit) return null;
+  let attempted = 0;
+  for (const j of fresh) {
+    if (attempted > 0) await sleep(DETAIL_DELAY_MS, ctx);
+    attempted++;
+    try {
+      const detailRef = new URL(apiUrl);
+      detailRef.search = '';
+      detailRef.pathname = `${detailRef.pathname.replace(/\/+$/, '')}/${encodeURIComponent(String(j.id))}`;
+      const detail = /** @type {any} */ (await fetchJsonWithRetry(ctx, assertGreenhouseUrl(detailRef.href), { redirect: 'error' }));
+      if (detail && typeof detail.content === 'string') j.content = detail.content;
+    } catch {
+      // A body is enrichment: keep the posting without it.
+    }
+  }
+  return json;
+}
+
 const LEGACY_BOARD_HOSTS = new Set(['boards.greenhouse.io', 'boards.eu.greenhouse.io']);
 const JOB_BOARD_HOSTS = new Set(['job-boards.greenhouse.io', 'job-boards.eu.greenhouse.io']);
 
@@ -293,7 +329,12 @@ export default {
     /** @type {any} */
     let json;
     let bodiesInline = true;
-    try {
+    // Incremental read: a caller that already has some listings (ctx.isKnownListing,
+    // career-journal) gets the plain list, and bodies one at a time for new postings
+    // only. More new postings than greenhouse.detailLimit → the usual content=true read.
+    const incremental = await readNewBodiesOnly(entry, ctx, apiUrl);
+    if (incremental) { json = incremental; bodiesInline = false; }
+    else try {
       json = await ctx.fetchJson(listHref, { redirect: 'error' });
     } catch (err) {
       // A board with thousands of postings (SpaceX, Anduril) exceeds the body cap
@@ -310,7 +351,7 @@ export default {
     const usable = jobs.filter(/** @param {any} j */ j => j.absolute_url);
     const boardSlug = new URL(apiUrl).pathname.match(/^\/v1\/boards\/([^/]+)\/jobs\/?$/)?.[1] || '';
 
-    if (!bodiesInline) {
+    if (!bodiesInline && !incremental) {
       const { fetchDetails, detailLimit } = parseDetailConfig(entry);
       const probing = Number.isInteger(ctx?.maxPages) && ctx.maxPages > 0;
       const titleWanted = typeof ctx?.titleWanted === 'function' ? ctx.titleWanted : null;
