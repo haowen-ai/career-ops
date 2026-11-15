@@ -4,6 +4,7 @@
 
 import { BROWSER_LIKE_USER_AGENT, fetchTextWithRetry, sleep } from './_http.mjs';
 import { coerceId } from './_ids.mjs';
+import { createEarlyStop, markCollection } from './_early-stop.mjs';
 import { safeEncodeURIComponent } from './_safe-url.mjs';
 
 // Apple provider — jobs.apple.com is a React Router SSR app with NO usable JSON API.
@@ -349,51 +350,115 @@ function resolveBoardMaxPages(entry, ctx) {
 }
 
 
+// Early stop (career-journal plan 2026-11-14 v5/r2/r3) is allowed on exactly the board whose order was proved live
+// (2026-11-15, four full passes): /en-us/search?location=united-states-USA, sorted by postDateInGMT newest first, the
+// same field parseResults reports as postedAt. Any other locale, location or parameter reads in full.
+const VERIFIED_LOCALE = 'en-us';
+const VERIFIED_LOCATION = 'united-states-USA';
+const DATE_SORT = 'newest';
+
+/** @param {{locale: string, params: Array<[string,string]>}} cfg */
+function earlyStopVerified(cfg) {
+  if (cfg.locale !== VERIFIED_LOCALE) return false;
+  const locations = cfg.params.filter(([k]) => k === 'location');
+  const sorts = cfg.params.filter(([k]) => k === 'sort');
+  const others = cfg.params.filter(([k]) => k !== 'location' && k !== 'sort');
+  return others.length === 0 && locations.length === 1 && locations[0][1] === VERIFIED_LOCATION
+    && (sorts.length === 0 || (sorts.length === 1 && sorts[0][1] === DATE_SORT));
+}
+
+/** The row's own id, the identity completeness is counted by (valid and skipped rows alike). @param {any} r */
+function rawIdOf(r) {
+  const id = r?.id;
+  if (typeof id === 'string' && id.trim()) return id.trim();
+  if (typeof id === 'number' && Number.isFinite(id)) return String(id);
+  return null;
+}
+
 // Whole-board mode (career-journal fork): an entry with no apple.queries / apple.teams whose
 // careers_url itself carries search filters (e.g. ?location=united-states-USA) reads every row
 // of that filtered board, 20 per page, bounded by max_pages (default 300, cap 1000).
+//
+// With ctx.isKnownListing and ctx.earlyStopBeforeMs, on the verified board only, the pages are requested with
+// sort=newest and the walk may stop at a fully known page older than the bound (_early-stop.mjs); a page whose echoed
+// sort is not "newest" never counts for the stop. jobs.collection.status is one of:
+//   early_stopped;
+//   complete     every page with rows reported the first page's totalRecords, the distinct raw ids reached it, and
+//                every row had an id;
+//   page_failed  an empty page, or a page of ids already read this walk, before that count (a repeated page is not
+//                the end of the list);
+//   ceiling      max_pages ran out first;
+//   unverified   a page reported another total (rows were added or taken down while paging, so offsets shifted and a
+//                count cannot prove coverage; the stop is off from that page on), or a row had no id.
+// A failed page request still throws: the list fails and nothing advances.
 /** @param {any} entry @param {any} ctx */
 async function fetchBoard(entry, ctx) {
   const cfg = resolveConfig(entry); // throws before any request
   const maxPages = resolveBoardMaxPages(entry, ctx);
+  const probing = Number(ctx?.maxPages) > 0;
+  const stopper = !probing && earlyStopVerified(cfg) ? createEarlyStop(ctx) : null;
+  // Only an early-stopping walk changes the request; every other read is the same request as before.
+  const requestCfg = stopper && !cfg.params.some(([k]) => k === 'sort') ? { ...cfg, params: [...cfg.params, ['sort', DATE_SORT]] } : cfg;
   const seen = new Set();
+  const rawIds = new Set();
   const all = [];
-  let raw = 0;
   let skipped = 0;
+  let anonymous = 0;
   /** @type {number|null} */
   let total = null;
-  let pagesFetched = 0;
+  let totalChanged = false;
+  let stopOn = Boolean(stopper);
+  /** @type {null | 'count' | 'empty' | 'repeated' | 'early'} */
+  let end = null;
 
   for (let page = 1; page <= maxPages; page++) {
     if (page > 1) await sleep(BOARD_INTER_PAGE_DELAY_MS, ctx);
-    const url = assertBoardUrl(buildPageUrl(cfg, page));
+    const url = assertBoardUrl(buildPageUrl(requestCfg, page));
     const html = await fetchTextWithRetry(ctx, url, {
       redirect: 'error',
       headers: { 'User-Agent': BROWSER_LIKE_USER_AGENT, Accept: 'text/html', 'Accept-Language': 'en-US,en;q=0.9' },
     }, RETRY_POLICY);
-    pagesFetched = page;
     const search = extractSearchData(html);
+    if (search.searchResults.length === 0) { end = 'empty'; break; }
     if (total === null) total = search.totalRecords;
+    else if (search.totalRecords !== total) totalChanged = true;
+    let freshIds = 0;
+    for (const r of search.searchResults) {
+      const id = rawIdOf(r);
+      if (id === null) anonymous++;
+      else if (!rawIds.has(id)) { rawIds.add(id); freshIds++; }
+    }
+    if (page > 1 && freshIds === 0) { end = 'repeated'; break; }
     const res = parseResults(search, cfg.locale, entry.name);
-    raw += res.rawCount;
     skipped += res.skipped;
     for (const j of res.jobs) {
       if (seen.has(j.id)) continue;
       seen.add(j.id);
       all.push(j);
     }
-    if (res.rawCount === 0) break;
-    if (raw >= total) break;
-    if (page * BOARD_PAGE_SIZE >= total && res.rawCount < BOARD_PAGE_SIZE) break;
+    if (totalChanged || search.sort !== DATE_SORT) stopOn = false;
+    if (stopOn && stopper?.page(res.jobs)) { end = 'early'; break; }
+    // After a total change, read on to the end: the most rows, never a claim of completeness.
+    if (!totalChanged && rawIds.size >= total) { end = 'count'; break; }
   }
 
+  /** @type {'complete'|'early_stopped'|'page_failed'|'ceiling'|'unverified'} */
+  let status;
+  const short = total !== null && rawIds.size < total;
+  if (end === 'early') status = 'early_stopped';
+  else if (end === null && short) status = 'ceiling';
+  else if (totalChanged) status = 'unverified';
+  else if (short) status = 'page_failed';
+  else if (anonymous > 0) status = 'unverified';
+  else status = 'complete';
+
   if (skipped > 0) console.error(`⚠️  apple: ${entry.name} skipped ${skipped} malformed rows`);
-  if (total !== null && raw < total) {
-    const why = pagesFetched >= maxPages ? `max_pages=${maxPages}` : 'short pages';
-    console.error(`⚠️  apple: ${entry.name} truncated (${why}): ${raw} of ${total} rows read — raise max_pages or narrow the careers_url filters`);
-    /** @type {any} */ (all).truncated = { reason: pagesFetched >= maxPages ? 'page-cap' : 'source-reports-more', fetched: all.length, total };
+  if (end !== 'early' && short) {
+    const capped = end === null;
+    console.error(`⚠️  apple: ${entry.name} truncated (${capped ? `max_pages=${maxPages}` : 'short pages'}): ${rawIds.size} of ${total} rows read — raise max_pages or narrow the careers_url filters`);
+    /** @type {any} */ (all).truncated = { reason: capped ? 'page-cap' : 'source-reports-more', fetched: all.length, total };
   }
-  return all;
+  return markCollection(all, status);
 }
 
 /** True when careers_url carries its own search filters (whole-board mode). @param {any} entry */
