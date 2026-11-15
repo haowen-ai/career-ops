@@ -75,7 +75,8 @@
 // When no domain is known, the tenant's own /careers page (same pinned host)
 // is fetched once and its `"domain": "<x>"` config value is used.
 
-import { BROWSER_LIKE_USER_AGENT, fetchJsonWithRetry, fetchTextWithRetry, sleep } from './_http.mjs';
+import { abortableSleep, BROWSER_LIKE_USER_AGENT, fetchJsonWithRetry, fetchTextWithRetry, parseRetryAfterMs, sleep } from './_http.mjs';
+import { currentAbortSignal } from './_connection-scope.mjs';
 import { coerceId } from './_ids.mjs';
 import { safeEncodeURIComponent } from './_safe-url.mjs';
 
@@ -430,10 +431,12 @@ export default {
     // endpoints' orderings together (duplicated or skipped postings).
     let api = 'v2';
     let rateLimited = false;
+    // Raised (doubling, capped) after a 429 cooldown, for the rest of this board.
+    const pacing = { delayMs: INTER_PAGE_DELAY_MS };
 
     for (let page = 0; page < maxPages; page++) {
       const start = page * PAGE_SIZE;
-      if (page > 0) await sleep(api === 'pcsx' ? PCSX_INTER_PAGE_DELAY_MS : INTER_PAGE_DELAY_MS, ctx);
+      if (page > 0) await sleep(api === 'pcsx' ? Math.max(PCSX_INTER_PAGE_DELAY_MS, pacing.delayMs) : pacing.delayMs, ctx);
 
       /** One request on whichever API this tenant is on. */
       const request = async (/** @type {string} */ which) => {
@@ -455,7 +458,11 @@ export default {
 
       let json;
       try {
-        json = await request(api);
+        // Fork (plan v7a): a 429 that outlasts the generic retry gets bounded
+        // cooldowns and the SAME page is asked again, so a busy edge delays the
+        // walk instead of cutting it short. Only a limit that outlasts every
+        // cooldown reaches the partial branch below.
+        json = await withRateLimitCooldown(() => request(api), ctx, pacing, api === 'pcsx' ? PCSX_COOLDOWN : V2_COOLDOWN);
       } catch (err) {
         const status = /** @type {any} */ (err)?.status;
         // A 403 on the classic endpoint is how a migrated tenant announces
@@ -499,8 +506,9 @@ export default {
           json = { positions: page0.positions, ...(page0.count === undefined ? {} : { count: page0.count }) };
         } else if (status === 429 && all.length > 0) {
           // Large PCSX tenants rate-limit a sustained walk (measured: Microsoft
-          // 429s after ~20 pages at 1 req/s even with backoff). Keep the pages
-          // already collected and say the board is partial — never silently.
+          // 429s after ~20 pages at 1 req/s even with backoff). The cooldowns
+          // above did not lift it: keep the pages already collected and say the
+          // board is partial — never silently.
           rateLimited = true;
           break;
         } else {
@@ -768,8 +776,52 @@ async function resolvePcsxDomain(entry, tenant, ctx, policy = RETRY_POLICY) {
 // then the 429 is rethrown.
 export const RATE_LIMIT_COOLDOWN_MS = 15_000;
 export const RATE_LIMIT_RETRIES = 4;
+// v2 walk (fork, plan v7a). Measured 2026-11-15 on netflix.eightfold.ai: the
+// tenant answers 429 "Please try again later" with no Retry-After, other
+// tenants keep answering 200 at the same moment, and the lock lasts about five
+// minutes (429 at 21:25:41Z and still at 21:30:10Z, 200 at 21:30:41Z). So the
+// v2 cooldown is a flat minute, asked again up to seven times: up to seven
+// minutes of waiting on one board, only while it is refused.
+export const V2_RATE_LIMIT_COOLDOWN_MS = 60_000;
+export const V2_RATE_LIMIT_RETRIES = 7;
+// A Retry-After longer than the cooldown is waited out, up to this; a shorter
+// one never shortens the cooldown.
+export const MAX_RETRY_AFTER_MS = 120_000;
+const PCSX_COOLDOWN = { cooldownMs: (/** @type {number} */ round) => RATE_LIMIT_COOLDOWN_MS * round, rounds: RATE_LIMIT_RETRIES };
+const V2_COOLDOWN = { cooldownMs: () => V2_RATE_LIMIT_COOLDOWN_MS, rounds: V2_RATE_LIMIT_RETRIES };
 const MAX_ADAPTIVE_DELAY_MS = 4_000;
 const PCSX_MODE_RETRY_POLICY = { retries: 2, baseDelayMs: 1_000, maxDelayMs: 8_000 };
+
+/**
+ * Run `attempt` (one request with its own generic retry); on a 429 that
+ * survives it, wait a cooldown and run it again — the same request, so no page
+ * is skipped. Used by both the v2 walk and the PCSX-mode walk (plan v7a: the
+ * v2 walk used to end at the first such 429, and Netflix came back partial).
+ * Bounded: `schedule.rounds` cooldowns, then the 429 is rethrown for the
+ * caller to keep its pages and tag the board partial. Every request still goes
+ * through ctx.fetchJson, so a caller's request budget counts the retries too.
+ *
+ * @template T
+ * @param {() => Promise<T>} attempt
+ * @param {any} ctx
+ * @param {{delayMs: number}} pacing - mutated: raised after a 429.
+ * @param {{cooldownMs: (round: number) => number, rounds: number}} schedule
+ * @returns {Promise<T>}
+ */
+async function withRateLimitCooldown(attempt, ctx, pacing, schedule) {
+  for (let round = 1; ; round++) {
+    try {
+      return await attempt();
+    } catch (err) {
+      if (/** @type {any} */ (err)?.status !== 429 || round > schedule.rounds || currentAbortSignal()?.aborted) throw err;
+      pacing.delayMs = Math.min(Math.max(pacing.delayMs * 2, 1_000), MAX_ADAPTIVE_DELAY_MS);
+      const retryAfterMs = parseRetryAfterMs(/** @type {any} */ (err)?.retryAfter);
+      const cooldown = Math.max(schedule.cooldownMs(round), retryAfterMs === null ? 0 : Math.min(retryAfterMs, MAX_RETRY_AFTER_MS));
+      await abortableSleep(cooldown, ctx, currentAbortSignal());
+      if (currentAbortSignal()?.aborted) throw err;
+    }
+  }
+}
 
 /**
  * @param {any} ctx
@@ -777,20 +829,12 @@ const PCSX_MODE_RETRY_POLICY = { retries: 2, baseDelayMs: 1_000, maxDelayMs: 8_0
  * @param {{delayMs: number}} pacing - mutated: raised after a 429.
  */
 async function fetchPcsxPage(ctx, apiUrl, pacing) {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await fetchJsonWithRetry(
-        /** @type {any} */ (ctx),
-        apiUrl,
-        { redirect: 'error', headers: { 'User-Agent': BROWSER_LIKE_USER_AGENT, Accept: 'application/json' } },
-        PCSX_MODE_RETRY_POLICY,
-      );
-    } catch (err) {
-      if (/** @type {any} */ (err)?.status !== 429 || attempt > RATE_LIMIT_RETRIES) throw err;
-      pacing.delayMs = Math.min(Math.max(pacing.delayMs * 2, 1_000), MAX_ADAPTIVE_DELAY_MS);
-      await sleep(RATE_LIMIT_COOLDOWN_MS * attempt, ctx);
-    }
-  }
+  return withRateLimitCooldown(() => fetchJsonWithRetry(
+    /** @type {any} */ (ctx),
+    apiUrl,
+    { redirect: 'error', headers: { 'User-Agent': BROWSER_LIKE_USER_AGENT, Accept: 'application/json' } },
+    PCSX_MODE_RETRY_POLICY,
+  ), ctx, pacing, PCSX_COOLDOWN);
 }
 
 /**
