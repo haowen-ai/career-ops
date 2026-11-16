@@ -302,6 +302,8 @@ try {
   // sleep is a no-op so retry-backoff delays don't slow the test suite down.
   const mkWorkdayCtx = (fetchJson, extra = {}) => ({
     transport: 'http',
+    // No shared rate gate: these cases are about the provider, not the process-wide pace (workday-rate-gate.test.mjs).
+    workdayGate: null,
     fetchText: async () => { throw new Error('fetchText should not be called'); },
     fetchJson,
     sleep: async () => {},

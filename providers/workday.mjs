@@ -12,6 +12,7 @@
 // and omitted for the unbounded "30+ Days Ago" form.
 
 import { BROWSER_LIKE_USER_AGENT, fetchJsonWithRetry, sleep } from './_http.mjs';
+import { BREAKER_OPEN_CODE, createRateGate, resolveRpm } from './_rate-gate.mjs';
 
 // Why one paginated pass (the unfaceted root crawl, or one facet-split slice)
 // stopped. COMPLETE covers both "ran out of pages" and "hit the offset
@@ -34,6 +35,33 @@ export const WORKDAY_TRUNCATED_REASON = {
   TRANSIENT: 'transient',
   STRUCTURAL: 'structural',
 };
+
+// One request pace for every Workday tenant in this process (career-journal plan 2026-11-14 v8). Workday
+// throttles per client IP across all clusters, so the per-tenant spacing below is not enough on its own when
+// hundreds of tenants run in parallel lanes. CAREER_OPS_WORKDAY_RPM overrides the requests-per-minute cap
+// ('off' = no shared gate). 120/min is about a third of a normal nightly's average Workday rate (200-370/min)
+// and a fifth of its 12-lane peak (~600/min). See providers/_rate-gate.mjs for the 429 cooldown and breaker.
+const DEFAULT_WORKDAY_RPM = 120;
+const SHARED_GATE_KEY = Symbol.for('career-ops.workday.rate-gate');
+
+/**
+ * The rate gate a workday.fetch() call goes through: `ctx.workdayGate` when the caller sets that key (null =
+ * none; tests inject a gate on a fake clock), otherwise the process-wide gate for the real HTTP transport.
+ * Kept on globalThis so a second copy of this module still shares the one gate.
+ *
+ * @param {any} ctx
+ * @returns {ReturnType<typeof createRateGate> | null}
+ */
+export function workdayGateFor(ctx) {
+  if (ctx && Object.prototype.hasOwnProperty.call(ctx, 'workdayGate')) return ctx.workdayGate ?? null;
+  if (ctx?.transport !== 'http') return null;
+  const store = /** @type {any} */ (globalThis);
+  if (!(SHARED_GATE_KEY in store)) {
+    const rpm = resolveRpm(process.env.CAREER_OPS_WORKDAY_RPM, DEFAULT_WORKDAY_RPM, 'CAREER_OPS_WORKDAY_RPM');
+    store[SHARED_GATE_KEY] = rpm === null ? null : createRateGate({ rpm, label: 'workday' });
+  }
+  return store[SHARED_GATE_KEY];
+}
 
 const PAGE_SIZE = 20;
 
@@ -992,6 +1020,10 @@ export default {
   async fetch(entry, ctx) {
     const ep = resolveEndpoint(entry);
     if (!ep) throw new Error(`workday: cannot derive CXS endpoint for ${entry.name}`);
+    // Every request below (pages, keyword and facet queries, detail GETs, the dead-board check) shares the
+    // process-wide pace, 429 cooldown and breaker.
+    const gate = workdayGateFor(ctx);
+    if (gate) ctx = gate.wrap(ctx);
 
     const postOpts = {
       method: 'POST',
@@ -1544,13 +1576,15 @@ export default {
           let detail;
           try {
             detail = await fetchJsonWithRetry(meteredCtx, `${ep.cxsBase}${externalPath}`, detailOpts, policy);
-          } catch {
+          } catch (err) {
             // Fail soft, per posting. A detail document that 404s, rate-limits or
             // returns something unexpected leaves the placeholder exactly as it
             // was, which is the pre-#3860 behaviour — never a dropped posting and
             // never an empty location, which reads as "location unknown"
             // downstream and would be a worse lie than the count.
             failed++;
+            // The shared breaker is open: every further detail GET would be refused the same way.
+            if (/** @type {any} */ (err)?.code === BREAKER_OPEN_CODE) break;
             continue;
           }
           const places = locationsFromDetail(detail);

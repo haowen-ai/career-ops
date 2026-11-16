@@ -17,7 +17,7 @@ const PAGE0 = { total: 3, jobPostings: [
   { title: 'Writer Intern', externalPath: '/job/USA---Austin-TX/Writer-Intern_R102', locationsText: 'USA - Austin, TX', postedOn: 'Posted Today' },
 ] };
 const DETAIL = { jobPostingInfo: { location: 'USA - Sunnyvale, CA', additionalLocations: ['USA - Austin, TX'], startDate: '2026-09-04' } };
-const mkCtx = (fetchJson, extra = {}) => ({ transport: 'http', fetchText: async () => { throw new Error('no fetchText'); }, fetchJson, sleep: async () => {}, ...extra });
+const mkCtx = (fetchJson, extra = {}) => ({ transport: 'http', workdayGate: null, fetchText: async () => { throw new Error('no fetchText'); }, fetchJson, sleep: async () => {}, ...extra });
 
 test('workday rows carry the URL posting token as listingId (repost suffix kept)', () => {
   const jobs = parseWorkdayResponse(PAGE0, ENTRY);

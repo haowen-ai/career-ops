@@ -31,6 +31,8 @@ function makeCtx(boards) {
   const sleeps = [];
   const ctx = {
     transport: 'http',
+    // No shared rate gate: these cases are about the provider, not the process-wide pace (workday-rate-gate.test.mjs).
+    workdayGate: null,
     fetchText: async () => { throw new Error('fetchText should not be called'); },
     sleep: async (ms) => { sleeps.push(ms); },
     includeUndated: true,
