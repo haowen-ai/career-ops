@@ -85,6 +85,15 @@ const MAX_PAGES_CAP = 1500;
 // retried — retrying a malformed request just wastes the budget.
 const RETRY_POLICY = { retries: 3 };
 
+// Transport for every Workday request. Workday's Cloudflare front challenges
+// undici (429 + cf-mitigated: challenge on the first request) while node:https
+// gets 200 for the same request — see providers/_node-https-fetch.mjs.
+// CAREER_OPS_WORKDAY_TRANSPORT=fetch restores the shared undici/fetch path
+// (rollback switch; also what tests that stub globalThis.fetch set).
+function workdayUsesNodeHttps() {
+  return String(process.env.CAREER_OPS_WORKDAY_TRANSPORT || '').trim().toLowerCase() !== 'fetch';
+}
+
 // Delay between successive pages *within one tenant's own pagination loop*
 // (not between tenants — that's scan-ats-full.mjs's concurrency, a separate
 // knob). A burst of same-host requests with zero delay risks Workday's
@@ -197,6 +206,7 @@ async function confirmDeadViaCareersPage(ep, ctx) {
   try {
     const body = await ctx.fetchText(ep.jobBase, {
       redirect: 'manual',
+      nodeHttps: workdayUsesNodeHttps(),
       headers: { 'user-agent': BROWSER_LIKE_USER_AGENT, 'accept-language': 'en-US,en;q=0.9' },
     });
     // Every confirmed case so far reaches the marker through the catch below
@@ -1028,6 +1038,7 @@ export default {
     const postOpts = {
       method: 'POST',
       redirect: 'error',
+      nodeHttps: workdayUsesNodeHttps(),
       headers: {
         'content-type': 'application/json',
         accept: 'application/json',
@@ -1507,6 +1518,7 @@ export default {
       if (ctxCap === Infinity) {
         const detailOpts = {
           redirect: 'error',
+          nodeHttps: workdayUsesNodeHttps(),
           headers: {
             accept: 'application/json',
             'user-agent': BROWSER_LIKE_USER_AGENT,

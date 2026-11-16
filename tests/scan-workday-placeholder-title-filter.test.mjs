@@ -70,6 +70,8 @@ function runScan(portalsYml) {
         ...env,
         CAREER_OPS_ROOT: dir,
         CAREER_OPS_PORTALS: portals,
+        // The fake tenant replaces globalThis.fetch; keep Workday on that path.
+        CAREER_OPS_WORKDAY_TRANSPORT: 'fetch',
         FAKE_WD_LOG: log,
         FAKE_WD_CXS: CXS,
         FAKE_WD_PAGE: JSON.stringify(PAGE),

@@ -11,6 +11,7 @@ import {
 import { providerFetchContext, isBlockedAddress, blockedAddressError } from './_ip-guard.mjs';
 import { currentConnectionScope, currentAbortSignal } from './_connection-scope.mjs';
 import { cachedText } from './_http-cache.mjs';
+import { nodeHttpsFetch } from './_node-https-fetch.mjs';
 import { normalizeUrl, aggregatorPostingId } from '../url-key.mjs';
 
 /** @typedef {import('./_types.js').Context} Context */
@@ -154,7 +155,7 @@ async function fetchWithTimeout(url, opts = {}, consume, allowManualRedirectResp
  * @param {typeof fetch} [fetchImpl] undici's fetch when a proxy dispatcher is used; global fetch otherwise.
  * @returns {Promise<any>}
  */
-async function fetchInContext(url, { timeoutMs = resolveDefaultTimeoutMs(process.env.CAREER_OPS_HTTP_TIMEOUT_MS), headers = {}, method = 'GET', body = null, redirect = 'error', onResponse, acceptNotModified = false } = {}, consume, dispatcher, allowManualRedirectResponse = false, fetchImpl = fetch) {
+async function fetchInContext(url, { timeoutMs = resolveDefaultTimeoutMs(process.env.CAREER_OPS_HTTP_TIMEOUT_MS), headers = {}, method = 'GET', body = null, redirect = 'error', onResponse, acceptNotModified = false, nodeHttps = false } = {}, consume, dispatcher, allowManualRedirectResponse = false, fetchImpl = fetch) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -176,7 +177,11 @@ async function fetchInContext(url, { timeoutMs = resolveDefaultTimeoutMs(process
     // brings its own fetch: undici's Agent is only safe with undici's fetch.
     // A trusted-proxy dispatcher, when configured, still takes precedence,
     // together with the fetchImpl proxyFor() paired it with.
-    const scope = dispatcher ? undefined : currentConnectionScope();
+    // `nodeHttps` (Workday): send through node:https instead of undici, whose
+    // requests that host's CDN challenges (see _node-https-fetch.mjs). A
+    // trusted-proxy dispatcher still wins: the proxy path is undici-only.
+    const useNodeHttps = nodeHttps === true && !dispatcher;
+    const scope = (dispatcher || useNodeHttps) ? undefined : currentConnectionScope();
     // A sweep's per-company watchdog aborts the board's signal when it times
     // out; fold it into this request's own timeout so an abandoned board stops
     // mid-flight instead of running on in the background (#5570). Read straight
@@ -188,7 +193,7 @@ async function fetchInContext(url, { timeoutMs = resolveDefaultTimeoutMs(process
       : controller.signal;
     let res;
     try {
-      res = await (scope?.fetch ?? fetchImpl)(url, {
+      res = await (useNodeHttps ? nodeHttpsFetch : (scope?.fetch ?? fetchImpl))(url, {
         method,
         headers: requestHeaders,
         body,
